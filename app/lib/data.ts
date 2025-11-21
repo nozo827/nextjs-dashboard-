@@ -295,7 +295,8 @@ export async function fetchPostsByBlogId(
   }
 ): Promise<PostWithAuthor[]> {
   try {
-    let query = `
+    // パラメータ化クエリを使用してSQLインジェクションを防止
+    let baseQuery = `
       SELECT DISTINCT
         posts.*,
         users.name as author_name,
@@ -304,34 +305,46 @@ export async function fetchPostsByBlogId(
       JOIN users ON posts.author_id = users.id
     `;
 
-    const conditions: string[] = [`posts.blog_id = '${blogId}'`];
+    const queryParams: any[] = [blogId];
+    let paramIndex = 1;
 
     // カテゴリフィルタ
     if (filters?.categoryId) {
-      query += ` JOIN post_categories pc ON posts.id = pc.post_id`;
-      conditions.push(`pc.category_id = '${filters.categoryId}'`);
+      baseQuery += ` JOIN post_categories pc ON posts.id = pc.post_id`;
     }
 
     // タグフィルタ
     if (filters?.tagId) {
-      query += ` JOIN post_tags pt ON posts.id = pt.post_id`;
-      conditions.push(`pt.tag_id = '${filters.tagId}'`);
+      baseQuery += ` JOIN post_tags pt ON posts.id = pt.post_id`;
     }
 
-    // ステータスフィルタ
+    // WHERE条件を構築
+    const conditions: string[] = [`posts.blog_id = $${paramIndex++}`];
+
+    if (filters?.categoryId) {
+      queryParams.push(filters.categoryId);
+      conditions.push(`pc.category_id = $${paramIndex++}`);
+    }
+
+    if (filters?.tagId) {
+      queryParams.push(filters.tagId);
+      conditions.push(`pt.tag_id = $${paramIndex++}`);
+    }
+
     if (filters?.status) {
-      conditions.push(`posts.status = '${filters.status}'`);
+      queryParams.push(filters.status);
+      conditions.push(`posts.status = $${paramIndex++}`);
     }
 
-    // 著者フィルタ
     if (filters?.authorId) {
-      conditions.push(`posts.author_id = '${filters.authorId}'`);
+      queryParams.push(filters.authorId);
+      conditions.push(`posts.author_id = $${paramIndex++}`);
     }
 
-    query += ` WHERE ` + conditions.join(' AND ');
-    query += ` ORDER BY posts.created_at DESC`;
+    baseQuery += ` WHERE ` + conditions.join(' AND ');
+    baseQuery += ` ORDER BY posts.created_at DESC`;
 
-    const result = await sql.query(query);
+    const result = await sql.query(baseQuery, queryParams);
     const posts = result.rows as PostWithAuthor[];
 
     if (posts.length === 0) {

@@ -2,6 +2,7 @@
 
 import { Comment } from '@/app/lib/definitions';
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { createComment } from '@/app/lib/actions';
 
 // コメント一覧表示
@@ -33,6 +34,7 @@ export function CommentList({ comments }: { comments: Comment[] }) {
 
 // コメント投稿フォーム
 export function CommentForm({ postId }: { postId: string }) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -65,9 +67,9 @@ export function CommentForm({ postId }: { postId: string }) {
             setEmail('');
             setContent('');
 
-            // ページをリロードしてコメントを表示
+            // Next.jsのルーターを使用してページをリフレッシュ
             setTimeout(() => {
-              window.location.reload();
+              router.refresh();
             }, 1500);
           }
         }

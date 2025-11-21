@@ -21,7 +21,7 @@ export default function ProfileSection({ user }: ProfileSectionProps) {
               {user.avatar_url && !imageError ? (
                 <img
                   src={user.avatar_url}
-                  alt=""
+                  alt={`${user.name}のプロフィール写真`}
                   className="h-32 w-32 rounded-full object-cover border-2 border-gray-200"
                   onError={() => {
                     setImageError(true);

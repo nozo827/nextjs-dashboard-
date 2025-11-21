@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { Category } from '@/app/lib/definitions';
 import { createCategory, updateCategory, deleteCategory } from '@/app/lib/actions';
 import { PencilIcon, TrashIcon, PlusIcon } from '@heroicons/react/24/outline';
@@ -10,6 +11,7 @@ interface CategoriesClientProps {
 }
 
 export default function CategoriesClient({ initialCategories }: CategoriesClientProps) {
+  const router = useRouter();
   const [categories, setCategories] = useState<Category[]>(initialCategories);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -65,9 +67,9 @@ export default function CategoriesClient({ initialCategories }: CategoriesClient
         setFormState(state);
 
         if (state && state.message && !state.errors) {
-          // 成功したらモーダルを閉じて、ページをリロード
+          // 成功したらモーダルを閉じて、ページをリフレッシュ
           setIsModalOpen(false);
-          window.location.reload();
+          router.refresh();
         }
       } catch (error) {
         console.error('保存に失敗しました:', error);

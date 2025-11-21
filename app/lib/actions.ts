@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { AuthError } from 'next-auth';
 import { signIn, auth } from '@/auth';
+import bcrypt from 'bcryptjs';
 
 // =====================
 // バリデーションスキーマ
@@ -880,7 +881,6 @@ export async function registerUser(_prevState: State, formData: FormData): Promi
     }
 
     // パスワードのハッシュ化
-    const bcrypt = require('bcrypt');
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // ユーザーを作成

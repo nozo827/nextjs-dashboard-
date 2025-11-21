@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { Tag } from '@/app/lib/definitions';
 import { createTag, updateTag, deleteTag } from '@/app/lib/actions';
 import { PencilIcon, TrashIcon, PlusIcon } from '@heroicons/react/24/outline';
@@ -10,6 +11,7 @@ interface TagsClientProps {
 }
 
 export default function TagsClient({ initialTags }: TagsClientProps) {
+  const router = useRouter();
   const [tags, setTags] = useState<Tag[]>(initialTags);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTag, setEditingTag] = useState<Tag | null>(null);
@@ -65,9 +67,9 @@ export default function TagsClient({ initialTags }: TagsClientProps) {
         setFormState(state);
 
         if (state && state.message && !state.errors) {
-          // 成功したらモーダルを閉じて、ページをリロード
+          // 成功したらモーダルを閉じて、ページをリフレッシュ
           setIsModalOpen(false);
-          window.location.reload();
+          router.refresh();
         }
       } catch (error) {
         console.error('保存に失敗しました:', error);
