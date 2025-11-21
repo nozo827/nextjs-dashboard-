@@ -1,88 +1,148 @@
-// This file contains type definitions for your data.
-// It describes the shape of the data, and what data type each property should accept.
-// For simplicity of teaching, we're manually defining these types.
-// However, these types are generated automatically if you're using an ORM such as Prisma.
+// ブログ用の型定義
+// データベーススキーマに対応する型を定義
+
+export type UserRole = 'admin' | 'editor' | 'user';
+
 export type User = {
   id: string;
   name: string;
   email: string;
   password: string;
+  role: UserRole;
+  avatar_url: string | null; // プロフィール画像URL
+  bio: string | null; // 自己紹介文
+  created_at: Date;
 };
 
-export type Customer = {
+// メディアファイル
+export type Media = {
+  id: string;
+  filename: string;
+  original_filename: string;
+  file_path: string;
+  file_type: string;
+  file_size: number;
+  mime_type: string;
+  uploaded_by: string;
+  created_at: Date;
+};
+
+// ブログサイト
+export type Blog = {
   id: string;
   name: string;
-  email: string;
-  image_url: string;
+  slug: string;
+  description: string | null;
+  owner_id: string;
+  is_private: boolean; // プライベートブログかどうか（trueの場合、認証が必要）
+  created_at: Date;
 };
 
-export type Invoice = {
+// ブログアクセス権限（プライベートブログへのアクセス権）
+export type BlogAccess = {
   id: string;
-  customer_id: string;
-  amount: number;
-  date: string;
-  // In TypeScript, this is called a string union type.
-  // It means that the "status" property can only be one of the two strings: 'pending' or 'paid'.
-  status: 'pending' | 'paid';
+  blog_id: string;
+  user_id: string;
+  granted_at: Date;
 };
 
-export type Revenue = {
-  month: string;
-  revenue: number;
-};
-
-export type LatestInvoice = {
+// 記事アクセス権限（限定公開記事へのアクセス権）
+export type PostAccess = {
   id: string;
-  name: string;
-  image_url: string;
-  email: string;
-  amount: string;
+  post_id: string;
+  user_id: string;
+  granted_at: Date;
 };
 
-// The database returns a number for amount, but we later format it to a string with the formatCurrency function
-export type LatestInvoiceRaw = Omit<LatestInvoice, 'amount'> & {
-  amount: number;
-};
-
-export type InvoicesTable = {
-  id: string;
-  customer_id: string;
-  name: string;
-  email: string;
-  image_url: string;
-  date: string;
-  amount: number;
-  status: 'pending' | 'paid';
-};
-
-export type CustomersTableType = {
+export type Category = {
   id: string;
   name: string;
-  email: string;
-  image_url: string;
-  total_invoices: number;
-  total_pending: number;
-  total_paid: number;
+  slug: string;
+  description: string | null;
+  created_at: Date;
 };
 
-export type FormattedCustomersTable = {
+export type Tag = {
   id: string;
   name: string;
-  email: string;
-  image_url: string;
-  total_invoices: number;
-  total_pending: string;
-  total_paid: string;
+  slug: string;
+  created_at: Date;
 };
 
-export type CustomerField = {
+export type PostVisibility = 'public' | 'private' | 'restricted';
+
+export type Post = {
   id: string;
-  name: string;
+  blog_id: string | null;
+  title: string;
+  slug: string;
+  content: string;
+  excerpt: string | null;
+  featured_image: string | null;
+  status: 'draft' | 'published' | 'archived';
+  visibility: PostVisibility;
+  author_id: string;
+  published_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+  view_count: number; // 閲覧数
 };
 
-export type InvoiceForm = {
+// 記事一覧表示用（著者情報とカテゴリを含む）
+export type PostWithAuthor = Post & {
+  author_name: string;
+  author_email: string;
+  categories: Category[];
+};
+
+// 記事詳細表示用（カテゴリ、タグ、著者を含む）
+export type PostDetail = Post & {
+  author_name: string;
+  author_email: string;
+  categories: Category[];
+  tags: Tag[];
+};
+
+// 記事フォーム用
+export type PostForm = {
+  id?: string;
+  blog_id?: string;
+  title: string;
+  slug: string;
+  content: string;
+  excerpt: string;
+  featured_image?: string;
+  status: 'draft' | 'published' | 'archived';
+  visibility: PostVisibility;
+  category_ids: string[];
+  tag_ids: string[];
+  allowed_user_ids?: string[]; // 限定公開時の閲覧許可ユーザー
+};
+
+// 記事一覧のフィルタリング用
+export type PostsFilter = {
+  query?: string;
+  category?: string;
+  tag?: string;
+  status?: 'draft' | 'published' | 'archived';
+  author_id?: string;
+};
+
+// コメント
+export type Comment = {
   id: string;
-  customer_id: string;
-  amount: number;
-  status: 'pending' | 'paid';
+  post_id: string;
+  author_name: string;
+  author_email: string;
+  content: string;
+  created_at: Date;
+  approved: boolean;
+};
+
+// コメントフォーム用
+export type CommentForm = {
+  post_id: string;
+  author_name: string;
+  author_email: string;
+  content: string;
 };

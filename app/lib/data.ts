@@ -1,218 +1,652 @@
-import postgres from 'postgres';
+import { sql } from '@vercel/postgres';
 import {
-  CustomerField,
-  CustomersTableType,
-  InvoiceForm,
-  InvoicesTable,
-  LatestInvoiceRaw,
-  Revenue,
+  Post,
+  PostWithAuthor,
+  PostDetail,
+  Category,
+  Tag,
+  Comment,
+  Blog,
+  User,
 } from './definitions';
-import { formatCurrency } from './utils';
 
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+const ITEMS_PER_PAGE = 10;
 
-export async function fetchRevenue() {
+// =====================
+// ブログ関連
+// =====================
+
+// 全てのブログを取得
+export async function fetchBlogs(): Promise<Blog[]> {
   try {
-    // Artificially delay a response for demo purposes.
-    // Don't do this in production :)
-
-    // console.log('Fetching revenue data...');
-    // await new Promise((resolve) => setTimeout(resolve, 3000));
-
-    const data = await sql<Revenue[]>`SELECT * FROM revenue`;
-
-    // console.log('Data fetch completed after 3 seconds.');
-
-    return data;
+    const result = await sql`
+      SELECT * FROM blogs
+      ORDER BY created_at DESC
+    `;
+    return result.rows as Blog[];
   } catch (error) {
     console.error('Database Error:', error);
-    throw new Error('Failed to fetch revenue data.');
+    throw new Error('Failed to fetch blogs.');
   }
 }
 
-export async function fetchLatestInvoices() {
+// スラッグからブログを取得
+export async function fetchBlogBySlug(slug: string): Promise<Blog | null> {
   try {
-    const data = await sql<LatestInvoiceRaw[]>`
-      SELECT invoices.amount, customers.name, customers.image_url, customers.email, invoices.id
-      FROM invoices
-      JOIN customers ON invoices.customer_id = customers.id
-      ORDER BY invoices.date DESC
-      LIMIT 5`;
-
-    const latestInvoices = data.map((invoice) => ({
-      ...invoice,
-      amount: formatCurrency(invoice.amount),
-    }));
-    return latestInvoices;
+    const result = await sql`
+      SELECT * FROM blogs
+      WHERE slug = ${slug}
+      LIMIT 1
+    `;
+    return result.rows.length > 0 ? (result.rows[0] as Blog) : null;
   } catch (error) {
     console.error('Database Error:', error);
-    throw new Error('Failed to fetch the latest invoices.');
+    throw new Error('Failed to fetch blog.');
   }
 }
 
-export async function fetchCardData() {
+// IDからブログを取得
+export async function fetchBlogById(id: string): Promise<Blog | null> {
   try {
-    // You can probably combine these into a single SQL query
-    // However, we are intentionally splitting them to demonstrate
-    // how to initialize multiple queries in parallel with JS.
-    const invoiceCountPromise = sql`SELECT COUNT(*) FROM invoices`;
-    const customerCountPromise = sql`SELECT COUNT(*) FROM customers`;
-    const invoiceStatusPromise = sql`SELECT
-         SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) AS "paid",
-         SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) AS "pending"
-         FROM invoices`;
-
-    const data = await Promise.all([
-      invoiceCountPromise,
-      customerCountPromise,
-      invoiceStatusPromise,
-    ]);
-
-    const numberOfInvoices = Number(data[0][0].count ?? '0');
-    const numberOfCustomers = Number(data[1][0].count ?? '0');
-    const totalPaidInvoices = formatCurrency(data[2][0].paid ?? '0');
-    const totalPendingInvoices = formatCurrency(data[2][0].pending ?? '0');
-
-    return {
-      numberOfCustomers,
-      numberOfInvoices,
-      totalPaidInvoices,
-      totalPendingInvoices,
-    };
+    const result = await sql`
+      SELECT * FROM blogs
+      WHERE id = ${id}
+      LIMIT 1
+    `;
+    return result.rows.length > 0 ? (result.rows[0] as Blog) : null;
   } catch (error) {
     console.error('Database Error:', error);
-    throw new Error('Failed to fetch card data.');
+    throw new Error('Failed to fetch blog.');
   }
 }
 
-const ITEMS_PER_PAGE = 6;
-export async function fetchFilteredInvoices(
-  query: string,
-  currentPage: number,
-) {
+// =====================
+// ユーザー関連
+// =====================
+
+// メールアドレスからユーザーを取得
+export async function fetchUserByEmail(email: string): Promise<User | null> {
+  try {
+    const result = await sql`
+      SELECT * FROM users
+      WHERE email = ${email}
+      LIMIT 1
+    `;
+    return result.rows.length > 0 ? (result.rows[0] as User) : null;
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch user.');
+  }
+}
+
+// IDからユーザーを取得
+export async function fetchUserById(id: string): Promise<User | null> {
+  try {
+    const result = await sql`
+      SELECT * FROM users
+      WHERE id = ${id}
+      LIMIT 1
+    `;
+    return result.rows.length > 0 ? (result.rows[0] as User) : null;
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch user.');
+  }
+}
+
+// =====================
+// 記事関連
+// =====================
+
+// 公開記事の一覧を取得（ページネーション対応）
+export async function fetchPublishedPosts(
+  currentPage: number = 1,
+  blogId?: string
+): Promise<PostWithAuthor[]> {
   const offset = (currentPage - 1) * ITEMS_PER_PAGE;
 
   try {
-    const invoices = await sql<InvoicesTable[]>`
-      SELECT
-        invoices.id,
-        invoices.amount,
-        invoices.date,
-        invoices.status,
-        customers.name,
-        customers.email,
-        customers.image_url
-      FROM invoices
-      JOIN customers ON invoices.customer_id = customers.id
-      WHERE
-        customers.name ILIKE ${`%${query}%`} OR
-        customers.email ILIKE ${`%${query}%`} OR
-        invoices.amount::text ILIKE ${`%${query}%`} OR
-        invoices.date::text ILIKE ${`%${query}%`} OR
-        invoices.status ILIKE ${`%${query}%`}
-      ORDER BY invoices.date DESC
-      LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
-    `;
+    let query;
+    if (blogId) {
+      query = sql`
+        SELECT
+          posts.*,
+          users.name as author_name,
+          users.email as author_email
+        FROM posts
+        JOIN users ON posts.author_id = users.id
+        WHERE posts.status = 'published'
+          AND posts.visibility = 'public'
+          AND posts.blog_id = ${blogId}
+        ORDER BY posts.published_at DESC
+        LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
+      `;
+    } else {
+      query = sql`
+        SELECT
+          posts.*,
+          users.name as author_name,
+          users.email as author_email
+        FROM posts
+        JOIN users ON posts.author_id = users.id
+        WHERE posts.status = 'published'
+          AND posts.visibility = 'public'
+        ORDER BY posts.published_at DESC
+        LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
+      `;
+    }
 
-    return invoices;
-  } catch (error) {
-    console.error('Database Error:', error);
-    throw new Error('Failed to fetch invoices.');
-  }
-}
+    const result = await query;
+    const posts = result.rows as PostWithAuthor[];
 
-export async function fetchInvoicesPages(query: string) {
-  try {
-    const data = await sql`SELECT COUNT(*)
-    FROM invoices
-    JOIN customers ON invoices.customer_id = customers.id
-    WHERE
-      customers.name ILIKE ${`%${query}%`} OR
-      customers.email ILIKE ${`%${query}%`} OR
-      invoices.amount::text ILIKE ${`%${query}%`} OR
-      invoices.date::text ILIKE ${`%${query}%`} OR
-      invoices.status ILIKE ${`%${query}%`}
-  `;
+    if (posts.length === 0) {
+      return [];
+    }
 
-    const totalPages = Math.ceil(Number(data[0].count) / ITEMS_PER_PAGE);
-    return totalPages;
-  } catch (error) {
-    console.error('Database Error:', error);
-    throw new Error('Failed to fetch total number of invoices.');
-  }
-}
+    // すべての記事IDを取得
+    const postIds = posts.map((post) => post.id);
 
-export async function fetchInvoiceById(id: string) {
-  try {
-    const data = await sql<InvoiceForm[]>`
-      SELECT
-        invoices.id,
-        invoices.customer_id,
-        invoices.amount,
-        invoices.status
-      FROM invoices
-      WHERE invoices.id = ${id};
-    `;
+    // 1回のクエリで全記事のカテゴリを取得（N+1問題を回避）
+    // UNNESTを使用してpostIdsを展開
+    const categoriesResult = await sql.query(
+      `SELECT
+        pc.post_id,
+        c.id,
+        c.name,
+        c.slug,
+        c.description,
+        c.created_at
+      FROM post_categories pc
+      JOIN categories c ON pc.category_id = c.id
+      WHERE pc.post_id = ANY($1)
+      ORDER BY c.name ASC`,
+      [postIds]
+    );
 
-    const invoice = data.map((invoice) => ({
-      ...invoice,
-      // Convert amount from cents to dollars
-      amount: invoice.amount / 100,
+    // 記事IDごとにカテゴリをグループ化
+    const categoriesByPostId = categoriesResult.rows.reduce(
+      (acc, row) => {
+        if (!acc[row.post_id]) {
+          acc[row.post_id] = [];
+        }
+        acc[row.post_id].push({
+          id: row.id,
+          name: row.name,
+          slug: row.slug,
+          description: row.description,
+          created_at: row.created_at,
+        });
+        return acc;
+      },
+      {} as Record<string, Category[]>
+    );
+
+    // 各記事にカテゴリを追加
+    const postsWithCategories = posts.map((post) => ({
+      ...post,
+      categories: categoriesByPostId[post.id] || [],
     }));
 
-    return invoice[0];
+    return postsWithCategories;
   } catch (error) {
     console.error('Database Error:', error);
-    throw new Error('Failed to fetch invoice.');
+    throw new Error('Failed to fetch published posts.');
   }
 }
 
-export async function fetchCustomers() {
+// 公開記事の総数を取得
+export async function fetchPublishedPostsCount(blogId?: string): Promise<number> {
   try {
-    const customers = await sql<CustomerField[]>`
+    let result;
+    if (blogId) {
+      result = await sql`
+        SELECT COUNT(*) as count
+        FROM posts
+        WHERE status = 'published'
+          AND visibility = 'public'
+          AND blog_id = ${blogId}
+      `;
+    } else {
+      result = await sql`
+        SELECT COUNT(*) as count
+        FROM posts
+        WHERE status = 'published'
+          AND visibility = 'public'
+      `;
+    }
+    return Number(result.rows[0].count);
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch posts count.');
+  }
+}
+
+// スラッグから記事詳細を取得
+export async function fetchPostBySlug(slug: string): Promise<PostDetail | null> {
+  try {
+    const result = await sql`
       SELECT
-        id,
-        name
-      FROM customers
+        posts.*,
+        users.name as author_name,
+        users.email as author_email,
+        users.avatar_url as author_avatar
+      FROM posts
+      JOIN users ON posts.author_id = users.id
+      WHERE posts.slug = ${slug}
+      LIMIT 1
+    `;
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    const post = result.rows[0];
+
+    // カテゴリを取得
+    const categoriesResult = await sql`
+      SELECT categories.*
+      FROM categories
+      JOIN post_categories ON categories.id = post_categories.category_id
+      WHERE post_categories.post_id = ${post.id}
+    `;
+
+    // タグを取得
+    const tagsResult = await sql`
+      SELECT tags.*
+      FROM tags
+      JOIN post_tags ON tags.id = post_tags.tag_id
+      WHERE post_tags.post_id = ${post.id}
+    `;
+
+    return {
+      ...post,
+      categories: categoriesResult.rows as Category[],
+      tags: tagsResult.rows as Tag[],
+    } as PostDetail;
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch post by slug.');
+  }
+}
+
+// IDから記事を取得
+export async function fetchPostById(id: string): Promise<Post | null> {
+  try {
+    const result = await sql`
+      SELECT * FROM posts
+      WHERE id = ${id}
+      LIMIT 1
+    `;
+    return result.rows.length > 0 ? (result.rows[0] as Post) : null;
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch post by ID.');
+  }
+}
+
+// ブログIDで記事を取得（管理画面用）
+export async function fetchPostsByBlogId(blogId: string): Promise<PostWithAuthor[]> {
+  try {
+    const result = await sql`
+      SELECT
+        posts.*,
+        users.name as author_name,
+        users.email as author_email
+      FROM posts
+      JOIN users ON posts.author_id = users.id
+      WHERE posts.blog_id = ${blogId}
+      ORDER BY posts.created_at DESC
+    `;
+    const posts = result.rows as PostWithAuthor[];
+
+    if (posts.length === 0) {
+      return [];
+    }
+
+    // すべての記事IDを取得
+    const postIds = posts.map((post) => post.id);
+
+    // 1回のクエリで全記事のカテゴリを取得（N+1問題を回避）
+    const categoriesResult = await sql.query(
+      `SELECT
+        pc.post_id,
+        c.id,
+        c.name,
+        c.slug,
+        c.description,
+        c.created_at
+      FROM post_categories pc
+      JOIN categories c ON pc.category_id = c.id
+      WHERE pc.post_id = ANY($1)
+      ORDER BY c.name ASC`,
+      [postIds]
+    );
+
+    // 記事IDごとにカテゴリをグループ化
+    const categoriesByPostId = categoriesResult.rows.reduce(
+      (acc: Record<string, Category[]>, row: any) => {
+        if (!acc[row.post_id]) {
+          acc[row.post_id] = [];
+        }
+        acc[row.post_id].push({
+          id: row.id,
+          name: row.name,
+          slug: row.slug,
+          description: row.description,
+          created_at: row.created_at,
+        });
+        return acc;
+      },
+      {}
+    );
+
+    // 各記事にカテゴリを追加
+    const postsWithCategories = posts.map((post) => ({
+      ...post,
+      categories: categoriesByPostId[post.id] || [],
+    }));
+
+    return postsWithCategories;
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch posts by blog ID.');
+  }
+}
+
+// ブログの記事統計を取得
+export async function fetchBlogPostStats(blogId: string) {
+  try {
+    const result = await sql`
+      SELECT
+        COUNT(*) as total_posts,
+        COUNT(*) FILTER (WHERE status = 'published') as published_posts,
+        COUNT(*) FILTER (WHERE status = 'draft') as draft_posts
+      FROM posts
+      WHERE blog_id = ${blogId}
+    `;
+    return result.rows[0];
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch blog post stats.');
+  }
+}
+
+// 記事の閲覧数を増やす
+export async function incrementPostViewCount(postId: string): Promise<void> {
+  try {
+    await sql`
+      UPDATE posts
+      SET view_count = view_count + 1
+      WHERE id = ${postId}
+    `;
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to increment view count.');
+  }
+}
+
+// =====================
+// カテゴリ関連
+// =====================
+
+// 全てのカテゴリを取得
+export async function fetchCategories(): Promise<Category[]> {
+  try {
+    const result = await sql`
+      SELECT * FROM categories
       ORDER BY name ASC
     `;
-
-    return customers;
-  } catch (err) {
-    console.error('Database Error:', err);
-    throw new Error('Failed to fetch all customers.');
+    return result.rows as Category[];
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch categories.');
   }
 }
 
-export async function fetchFilteredCustomers(query: string) {
+// IDからカテゴリを取得
+export async function fetchCategoryById(id: string): Promise<Category | null> {
   try {
-    const data = await sql<CustomersTableType[]>`
-		SELECT
-		  customers.id,
-		  customers.name,
-		  customers.email,
-		  customers.image_url,
-		  COUNT(invoices.id) AS total_invoices,
-		  SUM(CASE WHEN invoices.status = 'pending' THEN invoices.amount ELSE 0 END) AS total_pending,
-		  SUM(CASE WHEN invoices.status = 'paid' THEN invoices.amount ELSE 0 END) AS total_paid
-		FROM customers
-		LEFT JOIN invoices ON customers.id = invoices.customer_id
-		WHERE
-		  customers.name ILIKE ${`%${query}%`} OR
-        customers.email ILIKE ${`%${query}%`}
-		GROUP BY customers.id, customers.name, customers.email, customers.image_url
-		ORDER BY customers.name ASC
-	  `;
+    const result = await sql`
+      SELECT * FROM categories
+      WHERE id = ${id}
+      LIMIT 1
+    `;
+    return result.rows.length > 0 ? (result.rows[0] as Category) : null;
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch category.');
+  }
+}
 
-    const customers = data.map((customer) => ({
-      ...customer,
-      total_pending: formatCurrency(customer.total_pending),
-      total_paid: formatCurrency(customer.total_paid),
-    }));
+// カテゴリ別の記事を取得
+export async function fetchPostsByCategory(
+  categoryId: string,
+  currentPage: number = 1
+): Promise<PostWithAuthor[]> {
+  const offset = (currentPage - 1) * ITEMS_PER_PAGE;
 
-    return customers;
-  } catch (err) {
-    console.error('Database Error:', err);
-    throw new Error('Failed to fetch customer table.');
+  try {
+    const result = await sql`
+      SELECT
+        posts.*,
+        users.name as author_name,
+        users.email as author_email
+      FROM posts
+      JOIN users ON posts.author_id = users.id
+      JOIN post_categories ON posts.id = post_categories.post_id
+      WHERE post_categories.category_id = ${categoryId}
+        AND posts.status = 'published'
+        AND posts.visibility = 'public'
+      ORDER BY posts.published_at DESC
+      LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
+    `;
+    return result.rows as PostWithAuthor[];
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch posts by category.');
+  }
+}
+
+// =====================
+// タグ関連
+// =====================
+
+// 全てのタグを取得
+export async function fetchTags(): Promise<Tag[]> {
+  try {
+    const result = await sql`
+      SELECT * FROM tags
+      ORDER BY name ASC
+    `;
+    return result.rows as Tag[];
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch tags.');
+  }
+}
+
+// IDからタグを取得
+export async function fetchTagById(id: string): Promise<Tag | null> {
+  try {
+    const result = await sql`
+      SELECT * FROM tags
+      WHERE id = ${id}
+      LIMIT 1
+    `;
+    return result.rows.length > 0 ? (result.rows[0] as Tag) : null;
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch tag.');
+  }
+}
+
+// タグ別の記事を取得
+export async function fetchPostsByTag(
+  tagId: string,
+  currentPage: number = 1
+): Promise<PostWithAuthor[]> {
+  const offset = (currentPage - 1) * ITEMS_PER_PAGE;
+
+  try {
+    const result = await sql`
+      SELECT
+        posts.*,
+        users.name as author_name,
+        users.email as author_email
+      FROM posts
+      JOIN users ON posts.author_id = users.id
+      JOIN post_tags ON posts.id = post_tags.post_id
+      WHERE post_tags.tag_id = ${tagId}
+        AND posts.status = 'published'
+        AND posts.visibility = 'public'
+      ORDER BY posts.published_at DESC
+      LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
+    `;
+    return result.rows as PostWithAuthor[];
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch posts by tag.');
+  }
+}
+
+// =====================
+// コメント関連
+// =====================
+
+// 記事のコメントを取得
+export async function fetchCommentsByPostId(postId: string): Promise<Comment[]> {
+  try {
+    const result = await sql`
+      SELECT * FROM comments
+      WHERE post_id = ${postId} AND approved = true
+      ORDER BY created_at DESC
+    `;
+    return result.rows as Comment[];
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch comments.');
+  }
+}
+
+// ブログのコメント統計を取得
+export async function fetchBlogCommentStats(blogId: string) {
+  try {
+    const result = await sql`
+      SELECT
+        COUNT(*) as total_comments,
+        COUNT(*) FILTER (WHERE approved = false) as pending_comments
+      FROM comments
+      WHERE post_id IN (
+        SELECT id FROM posts WHERE blog_id = ${blogId}
+      )
+    `;
+    return result.rows[0];
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch blog comment stats.');
+  }
+}
+
+// =====================
+// アクセス権限関連
+// =====================
+
+// ユーザーがブログにアクセスできるかチェック
+export async function canAccessBlog(
+  userId: string | undefined,
+  blogId: string
+): Promise<boolean> {
+  try {
+    // ブログの情報を取得
+    const blog = await fetchBlogById(blogId);
+    if (!blog) return false;
+
+    // 公開ブログは誰でもアクセス可能
+    if (!blog.is_private) return true;
+
+    // プライベートブログはログインが必要
+    if (!userId) return false;
+
+    // オーナーまたはアクセス権を持つユーザーのみ
+    if (blog.owner_id === userId) return true;
+
+    const result = await sql`
+      SELECT * FROM blog_access
+      WHERE blog_id = ${blogId} AND user_id = ${userId}
+      LIMIT 1
+    `;
+
+    return result.rows.length > 0;
+  } catch (error) {
+    console.error('Database Error:', error);
+    return false;
+  }
+}
+
+// ユーザーが記事にアクセスできるかチェック
+export async function canAccessPost(
+  userId: string | undefined,
+  postId: string
+): Promise<boolean> {
+  try {
+    const post = await fetchPostById(postId);
+    if (!post) return false;
+
+    // 公開記事は誰でもアクセス可能
+    if (post.visibility === 'public') return true;
+
+    // 非公開・限定公開はログインが必要
+    if (!userId) return false;
+
+    // 著者は常にアクセス可能
+    if (post.author_id === userId) return true;
+
+    // 非公開の場合は著者のみ
+    if (post.visibility === 'private') return false;
+
+    // 限定公開の場合はアクセス権をチェック
+    if (post.visibility === 'restricted') {
+      const result = await sql`
+        SELECT * FROM post_access
+        WHERE post_id = ${postId} AND user_id = ${userId}
+        LIMIT 1
+      `;
+      return result.rows.length > 0;
+    }
+
+    return false;
+  } catch (error) {
+    console.error('Database Error:', error);
+    return false;
+  }
+}
+
+// ユーザーがアクセスできるブログ一覧を取得
+export async function fetchAccessibleBlogs(userId: string | undefined): Promise<Blog[]> {
+  try {
+    if (!userId) {
+      // ログインしていない場合は公開ブログのみ
+      const result = await sql`
+        SELECT * FROM blogs
+        WHERE is_private = false
+        ORDER BY created_at DESC
+      `;
+      return result.rows as Blog[];
+    } else {
+      // ログインしている場合は公開ブログ + アクセス権のあるプライベートブログ
+      const result = await sql`
+        SELECT DISTINCT blogs.*
+        FROM blogs
+        LEFT JOIN blog_access ON blogs.id = blog_access.blog_id AND blog_access.user_id = ${userId}
+        WHERE blogs.is_private = false
+           OR blogs.owner_id = ${userId}
+           OR blog_access.user_id = ${userId}
+        ORDER BY blogs.created_at DESC
+      `;
+      return result.rows as Blog[];
+    }
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch accessible blogs.');
   }
 }
