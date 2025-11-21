@@ -47,7 +47,7 @@ export default async function UsersPage() {
 
       return {
         ...user,
-        accessible_blogs: blogAccessResult.rows.map((row: { name: string }) => row.name),
+        accessible_blogs: blogAccessResult.rows.map((row: any) => row.name as string),
       };
     })
   );

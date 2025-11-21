@@ -3,8 +3,8 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   /* config options here */
   typescript: {
-    // ビルド時の型チェックを一時的にスキップ（開発中）
-    ignoreBuildErrors: true,
+    // TypeScript型チェックを有効化（セキュリティと品質向上のため）
+    ignoreBuildErrors: false,
   },
 };
 

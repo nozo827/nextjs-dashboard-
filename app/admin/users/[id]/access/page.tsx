@@ -41,7 +41,7 @@ export default async function UserAccessPage({ params }: { params: Promise<{ id:
   const blogAccessResult = await sql`
     SELECT blog_id FROM blog_access WHERE user_id = ${userId}
   `;
-  const initialAccess = blogAccessResult.rows.map((row: { blog_id: string }) => row.blog_id);
+  const initialAccess = blogAccessResult.rows.map((row: any) => row.blog_id as string);
 
   return (
     <UserAccessClient

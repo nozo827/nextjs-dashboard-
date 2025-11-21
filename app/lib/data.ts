@@ -285,18 +285,53 @@ export async function fetchPostById(id: string): Promise<Post | null> {
 }
 
 // ブログIDで記事を取得（管理画面用）
-export async function fetchPostsByBlogId(blogId: string): Promise<PostWithAuthor[]> {
+export async function fetchPostsByBlogId(
+  blogId: string,
+  filters?: {
+    categoryId?: string;
+    tagId?: string;
+    status?: string;
+    authorId?: string;
+  }
+): Promise<PostWithAuthor[]> {
   try {
-    const result = await sql`
-      SELECT
+    let query = `
+      SELECT DISTINCT
         posts.*,
         users.name as author_name,
         users.email as author_email
       FROM posts
       JOIN users ON posts.author_id = users.id
-      WHERE posts.blog_id = ${blogId}
-      ORDER BY posts.created_at DESC
     `;
+
+    const conditions: string[] = [`posts.blog_id = '${blogId}'`];
+
+    // カテゴリフィルタ
+    if (filters?.categoryId) {
+      query += ` JOIN post_categories pc ON posts.id = pc.post_id`;
+      conditions.push(`pc.category_id = '${filters.categoryId}'`);
+    }
+
+    // タグフィルタ
+    if (filters?.tagId) {
+      query += ` JOIN post_tags pt ON posts.id = pt.post_id`;
+      conditions.push(`pt.tag_id = '${filters.tagId}'`);
+    }
+
+    // ステータスフィルタ
+    if (filters?.status) {
+      conditions.push(`posts.status = '${filters.status}'`);
+    }
+
+    // 著者フィルタ
+    if (filters?.authorId) {
+      conditions.push(`posts.author_id = '${filters.authorId}'`);
+    }
+
+    query += ` WHERE ` + conditions.join(' AND ');
+    query += ` ORDER BY posts.created_at DESC`;
+
+    const result = await sql.query(query);
     const posts = result.rows as PostWithAuthor[];
 
     if (posts.length === 0) {

@@ -65,14 +65,18 @@ export default function PostsClient({
       filtered = filtered.filter((post) => post.blog_id === selectedBlog);
     }
 
-    // カテゴリでフィルタリング（今後実装）
+    // カテゴリでフィルタリング
     if (selectedCategory !== 'all') {
-      // TODO: post_categoriesテーブルと結合してフィルタリング
+      filtered = filtered.filter((post) =>
+        post.categories?.some((cat) => cat.id === selectedCategory)
+      );
     }
 
-    // タグでフィルタリング（今後実装）
+    // タグでフィルタリング
     if (selectedTag !== 'all') {
-      // TODO: post_tagsテーブルと結合してフィルタリング
+      filtered = filtered.filter((post) =>
+        post.tags?.some((tag) => tag.id === selectedTag)
+      );
     }
 
     // ソート

@@ -2,9 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { writeFile } from 'fs/promises';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import { auth } from '@/auth';
 
 export async function POST(request: NextRequest) {
   try {
+    // 認証チェック
+    const session = await auth();
+    if (!session?.user) {
+      return NextResponse.json(
+        { error: '認証が必要です' },
+        { status: 401 }
+      );
+    }
+
     const formData = await request.formData();
     const file = formData.get('file') as File;
 
@@ -49,7 +59,19 @@ export async function POST(request: NextRequest) {
     // ファイル名を生成（タイムスタンプ + ランダム文字列）
     const timestamp = Date.now();
     const randomString = Math.random().toString(36).substring(2, 15);
-    const extension = file.name.split('.').pop();
+
+    // 拡張子を安全に取得（パストラバーサル対策）
+    const extension = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    // 拡張子の検証
+    const allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'webm', 'ogg'];
+    if (!extension || !allowedExtensions.includes(extension)) {
+      return NextResponse.json(
+        { error: '許可されていないファイル拡張子です' },
+        { status: 400 }
+      );
+    }
+
     const filename = `${timestamp}-${randomString}.${extension}`;
 
     // アップロードディレクトリのパス（画像と動画で分ける）

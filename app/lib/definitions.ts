@@ -88,17 +88,19 @@ export type Post = {
   view_count: number; // 閲覧数
 };
 
-// 記事一覧表示用（著者情報とカテゴリを含む）
+// 記事一覧表示用（著者情報、カテゴリ、タグを含む）
 export type PostWithAuthor = Post & {
   author_name: string;
   author_email: string;
   categories: Category[];
+  tags: Tag[];
 };
 
 // 記事詳細表示用（カテゴリ、タグ、著者を含む）
 export type PostDetail = Post & {
   author_name: string;
   author_email: string;
+  author_avatar: string | null;
   categories: Category[];
   tags: Tag[];
 };

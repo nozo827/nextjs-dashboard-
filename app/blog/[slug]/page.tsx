@@ -3,6 +3,7 @@ import { auth } from '@/auth';
 import { fetchPostBySlug, incrementPostViewCount } from '@/app/lib/data';
 import { sql } from '@vercel/postgres';
 import { CommentList, CommentForm } from '@/app/ui/blog/comments';
+import { SafeHtmlContent } from '@/app/ui/blog/safe-html-content';
 import type { Comment } from '@/app/lib/definitions';
 
 // マークダウンを簡易的にHTMLに変換
@@ -33,7 +34,7 @@ function simpleMarkdownToHtml(markdown: string): string {
 
   // リスト
   html = html.replace(/^\* (.+)$/gim, '<li class="ml-4">$1</li>');
-  html = html.replace(/(<li.*<\/li>)/s, '<ul class="list-disc my-4">$1</ul>');
+  html = html.replace(/(<li[\s\S]*?<\/li>)/g, '<ul class="list-disc my-4">$1</ul>');
 
   // 段落（2つ以上の改行を段落に）
   html = html.replace(/\n\n/g, '</p><p class="mb-4">');
@@ -61,9 +62,25 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
       redirect('/login?callbackUrl=/blog/' + slug);
     }
   } else if (post.visibility === 'restricted') {
-    // 限定公開はログインユーザーのみ（今後、個別の権限チェックを追加）
+    // 限定公開は指定されたユーザーのみアクセス可能
     if (!session?.user?.id) {
       redirect('/login?callbackUrl=/blog/' + slug);
+    }
+
+    // post_accessテーブルで個別のアクセス権限をチェック
+    const accessCheckResult = await sql`
+      SELECT user_id FROM post_access
+      WHERE post_id = ${post.id} AND user_id = ${session.user.id}
+    `;
+
+    // 著者、管理者、または許可されたユーザーのみアクセス可能
+    const isAuthor = post.author_id === session.user.id;
+    const isAdmin = session.user.role === 'admin';
+    const hasAccess = accessCheckResult.rows.length > 0;
+
+    if (!isAuthor && !isAdmin && !hasAccess) {
+      // アクセス権限がない場合はエラーページへ
+      notFound();
     }
   }
 
@@ -98,7 +115,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
         </h1>
 
         <div className="flex items-center gap-4 text-gray-600 mb-4">
-          <time dateTime={post.published_at}>
+          <time dateTime={post.published_at?.toString() || undefined}>
             {formattedDate}
           </time>
           <span>•</span>
@@ -148,9 +165,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
 
       {/* 記事本文 */}
       <div className="prose prose-lg max-w-none">
-        <div
-          dangerouslySetInnerHTML={{ __html: contentHtml }}
-        />
+        <SafeHtmlContent html={contentHtml} />
       </div>
 
       {/* コメントセクション */}
