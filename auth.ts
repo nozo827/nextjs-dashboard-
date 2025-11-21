@@ -1,5 +1,6 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
+import Google from 'next-auth/providers/google';
 import { authConfig } from './auth.config';
 import { z } from 'zod';
 import type { User } from '@/app/lib/definitions';
@@ -24,6 +25,10 @@ async function getUser(email: string): Promise<User | undefined> {
 export const { auth, signIn, signOut, handlers } = NextAuth({
   ...authConfig,
   providers: [
+    Google({
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    }),
     Credentials({
       async authorize(credentials) {
         const parsedCredentials = z
@@ -44,4 +49,29 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
       },
     }),
   ],
+  callbacks: {
+    ...authConfig.callbacks,
+    async signIn({ user, account }) {
+      // Googleログインの場合、データベースにユーザーが存在しない場合は作成
+      if (account?.provider === 'google' && user.email) {
+        try {
+          const existingUser = await sql`
+            SELECT id FROM users WHERE email = ${user.email}
+          `;
+
+          if (existingUser.rows.length === 0) {
+            // 新規ユーザーを作成（一般ユーザーとして）
+            await sql`
+              INSERT INTO users (name, email, password, role, avatar_url, created_at)
+              VALUES (${user.name || 'Google User'}, ${user.email}, '', 'user', ${user.image || null}, NOW())
+            `;
+          }
+        } catch (error) {
+          console.error('Failed to create user:', error);
+          return false;
+        }
+      }
+      return true;
+    },
+  },
 });
