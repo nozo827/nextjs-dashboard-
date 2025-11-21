@@ -10,7 +10,7 @@ import { sql } from '@vercel/postgres';
 async function getUser(email: string): Promise<User | undefined> {
   try {
     const result = await sql`
-      SELECT id, email, name, password, role, avatar_url, created_at, updated_at
+      SELECT id, email, name, password, role, avatar_url, created_at
       FROM users
       WHERE email = ${email}
     `;
