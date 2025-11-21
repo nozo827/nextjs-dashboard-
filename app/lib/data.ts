@@ -602,9 +602,13 @@ export async function fetchBlogCommentStats(blogId: string) {
 // ユーザーがブログにアクセスできるかチェック
 export async function canAccessBlog(
   userId: string | undefined,
-  blogId: string
+  blogId: string,
+  userRole?: string
 ): Promise<boolean> {
   try {
+    // 管理者は全てのブログにアクセス可能
+    if (userRole === 'admin') return true;
+
     // ブログの情報を取得
     const blog = await fetchBlogById(blogId);
     if (!blog) return false;
@@ -634,9 +638,13 @@ export async function canAccessBlog(
 // ユーザーが記事にアクセスできるかチェック
 export async function canAccessPost(
   userId: string | undefined,
-  postId: string
+  postId: string,
+  userRole?: string
 ): Promise<boolean> {
   try {
+    // 管理者は全ての記事にアクセス可能
+    if (userRole === 'admin') return true;
+
     const post = await fetchPostById(postId);
     if (!post) return false;
 
@@ -670,13 +678,20 @@ export async function canAccessPost(
 }
 
 // ユーザーがアクセスできるブログ一覧を取得
-export async function fetchAccessibleBlogs(userId: string | undefined): Promise<Blog[]> {
+export async function fetchAccessibleBlogs(userId: string | undefined, userRole?: string): Promise<Blog[]> {
   try {
     if (!userId) {
       // ログインしていない場合は公開ブログのみ
       const result = await sql`
         SELECT * FROM blogs
         WHERE is_private = false
+        ORDER BY created_at DESC
+      `;
+      return result.rows as Blog[];
+    } else if (userRole === 'admin') {
+      // 管理者の場合は全てのブログにアクセス可能
+      const result = await sql`
+        SELECT * FROM blogs
         ORDER BY created_at DESC
       `;
       return result.rows as Blog[];

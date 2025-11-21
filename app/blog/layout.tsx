@@ -15,8 +15,8 @@ export default async function BlogLayout({
   const params = await searchParams;
   const blogSlug = params?.site || 'tech';
 
-  // アクセス可能なブログを取得
-  const accessibleBlogs = await fetchAccessibleBlogs(session?.user?.id);
+  // アクセス可能なブログを取得（管理者の場合は全てのブログ）
+  const accessibleBlogs = await fetchAccessibleBlogs(session?.user?.id, session?.user?.role);
 
   // 現在のブログを取得
   const currentBlog = await fetchBlogBySlug(blogSlug);

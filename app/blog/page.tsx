@@ -25,8 +25,8 @@ export default async function BlogPage({
   const session = await auth();
   const userId = session?.user?.id;
 
-  // アクセス権チェック
-  const hasAccess = await canAccessBlog(userId, currentBlog.id);
+  // アクセス権チェック（管理者は全てアクセス可能）
+  const hasAccess = await canAccessBlog(userId, currentBlog.id, session?.user?.role);
   if (!hasAccess) {
     redirect(`/login?callbackUrl=${encodeURIComponent(`/blog?site=${blogSlug}`)}`);
   }
