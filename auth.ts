@@ -77,16 +77,21 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
       if (user) {
         // Googleログインの場合、データベースから最新のユーザー情報を取得
         if (account?.provider === 'google' && user.email) {
-          const dbUser = await getUser(user.email);
-          if (dbUser) {
-            token.id = dbUser.id;
-            token.role = dbUser.role;
-            token.sub = dbUser.id;
+          try {
+            const dbUser = await getUser(user.email);
+            if (dbUser) {
+              token.id = dbUser.id;
+              token.role = dbUser.role;
+              token.sub = dbUser.id;
+            }
+          } catch (error) {
+            console.error('Failed to fetch user in jwt callback:', error);
           }
-        } else {
-          // 通常のログイン
+        } else if (user.id) {
+          // 通常のログイン（Credentials）
           token.id = user.id;
-          token.role = user.role;
+          token.role = (user as any).role || 'user';
+          token.sub = user.id;
         }
       }
       return token;
