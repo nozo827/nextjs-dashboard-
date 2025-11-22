@@ -27,12 +27,9 @@ export default function ProfileEditClient({ user }: ProfileEditClientProps) {
 
     startTransition(async () => {
       const result = await updateProfile({ message: null, errors: {} }, formData);
-      setState(result);
-      if (result && result.message && !result.errors) {
-        // 成功したら管理画面トップへ
-        setTimeout(() => {
-          router.push('/admin');
-        }, 1500);
+      // サーバー側でリダイレクトするため、クライアント側では何もしない
+      if (result) {
+        setState(result);
       }
     });
   };

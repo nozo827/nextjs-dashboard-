@@ -897,8 +897,8 @@ export async function registerUser(_prevState: State, formData: FormData): Promi
 
     // ユーザーを作成
     await sql`
-      INSERT INTO users (name, email, password, role, created_at, updated_at)
-      VALUES (${name}, ${email}, ${hashedPassword}, 'user', NOW(), NOW())
+      INSERT INTO users (name, email, password, role, created_at)
+      VALUES (${name}, ${email}, ${hashedPassword}, 'user', NOW())
     `;
 
     return {
