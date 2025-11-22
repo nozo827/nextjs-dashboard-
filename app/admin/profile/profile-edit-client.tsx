@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { User } from '@/app/lib/definitions';
 import { updateProfile } from '@/app/lib/actions';
@@ -15,7 +15,16 @@ export default function ProfileEditClient({ user }: ProfileEditClientProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [avatarUrl, setAvatarUrl] = useState(user.avatar_url || '');
+  const [name, setName] = useState(user.name);
+  const [bio, setBio] = useState(user.bio || '');
   const [state, setState] = useState<{ message?: string | null; errors?: Record<string, string[]> }>({ message: null, errors: {} });
+
+  // userプロップが変更されたら状態を更新
+  useEffect(() => {
+    setName(user.name);
+    setBio(user.bio || '');
+    setAvatarUrl(user.avatar_url || '');
+  }, [user]);
 
   // フォーム送信ハンドラ
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -27,9 +36,10 @@ export default function ProfileEditClient({ user }: ProfileEditClientProps) {
 
     startTransition(async () => {
       const result = await updateProfile({ message: null, errors: {} }, formData);
-      // サーバー側でリダイレクトするため、クライアント側では何もしない
-      if (result) {
-        setState(result);
+      setState(result);
+      // 成功した場合、ページをリフレッシュしてデータを更新
+      if (result.message && !result.message.includes('失敗')) {
+        router.refresh();
       }
     });
   };
@@ -115,7 +125,8 @@ export default function ProfileEditClient({ user }: ProfileEditClientProps) {
             id="name"
             name="name"
             required
-            defaultValue={user.name}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
             className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
           {state.errors?.name && (
@@ -132,7 +143,8 @@ export default function ProfileEditClient({ user }: ProfileEditClientProps) {
             id="bio"
             name="bio"
             rows={5}
-            defaultValue={user.bio || ''}
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
             placeholder="あなたの経歴や興味のあることを書いてください"
             className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />

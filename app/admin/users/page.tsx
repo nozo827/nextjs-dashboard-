@@ -27,8 +27,7 @@ export default async function UsersPage() {
       role,
       avatar_url,
       bio,
-      created_at,
-      updated_at
+      created_at
     FROM users
     ORDER BY created_at DESC
   `;

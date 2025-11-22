@@ -704,16 +704,19 @@ export async function updateProfile(prevState: State, formData: FormData): Promi
       WHERE id = ${user.id}
     `;
 
-    revalidatePath('/admin/profile');
-    revalidatePath('/blog');
-
   } catch (error) {
     console.error('プロフィールの更新に失敗しました:', error);
     return {
-      message: 'プロフィールの更新に失敗しました。',
+      message: `プロフィールの更新に失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`,
     };
   }
 
+  // キャッシュを再検証
+  revalidatePath('/admin/profile', 'page');
+  revalidatePath('/admin', 'page');
+  revalidatePath('/blog', 'page');
+
+  // 更新後にリダイレクトして最新データを確実に取得
   redirect('/admin/profile');
 }
 
