@@ -50,7 +50,6 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
     }),
   ],
   callbacks: {
-    ...authConfig.callbacks,
     async signIn({ user, account }) {
       // Googleログインの場合、データベースにユーザーが存在しない場合は作成
       if (account?.provider === 'google' && user.email) {
@@ -71,6 +70,44 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
           return false;
         }
       }
+      return true;
+    },
+    async jwt({ token, user, account }) {
+      // 初回ログイン時
+      if (user) {
+        // Googleログインの場合、データベースから最新のユーザー情報を取得
+        if (account?.provider === 'google' && user.email) {
+          const dbUser = await getUser(user.email);
+          if (dbUser) {
+            token.id = dbUser.id;
+            token.role = dbUser.role;
+            token.sub = dbUser.id;
+          }
+        } else {
+          // 通常のログイン
+          token.id = user.id;
+          token.role = user.role;
+        }
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      // セッションにユーザー情報を追加
+      if (token && session.user) {
+        session.user.id = token.sub as string;
+        session.user.role = (token.role as 'admin' | 'user') || 'user';
+      }
+      return session;
+    },
+    authorized({ auth, request: { nextUrl } }) {
+      const isLoggedIn = !!auth?.user;
+      const isAdminRoute = nextUrl.pathname.startsWith('/admin');
+
+      // 管理画面は認証が必要
+      if (isAdminRoute) {
+        return isLoggedIn;
+      }
+
       return true;
     },
   },
