@@ -36,20 +36,6 @@ export default function CreatePostClient({
   const initialState = { message: null, errors: {} };
   const [state, formAction] = useFormState(createPost, initialState);
 
-  // タイトルからスラッグを自動生成
-  const generateSlug = (title: string) => {
-    return title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '');
-  };
-
-  const handleTitleChange = (newTitle: string) => {
-    setTitle(newTitle);
-    if (!slug) {
-      setSlug(generateSlug(newTitle));
-    }
-  };
 
   // メディアを本文に挿入
   const handleMediaInsert = (url: string, type: string) => {
@@ -177,7 +163,7 @@ export default function CreatePostClient({
             name="title"
             required
             value={title}
-            onChange={(e) => handleTitleChange(e.target.value)}
+            onChange={(e) => setTitle(e.target.value)}
             className="w-full rounded-md border border-gray-300 px-4 py-2 text-lg focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
           {state.errors?.title && (
@@ -188,18 +174,20 @@ export default function CreatePostClient({
         {/* スラッグ */}
         <div className="rounded-lg border border-gray-200 bg-white p-6">
           <label htmlFor="slug" className="block text-sm font-medium text-gray-700 mb-2">
-            スラッグ（URL） <span className="text-red-500">*</span>
+            スラッグ（URL）
           </label>
           <input
             type="text"
             id="slug"
             name="slug"
-            required
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
+            placeholder="空欄の場合は自動生成されます"
             className="w-full rounded-md border border-gray-300 px-4 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
-          <p className="mt-1 text-sm text-gray-500">URL: /blog/{slug}</p>
+          <p className="mt-1 text-sm text-gray-500">
+            {slug ? `URL: /blog/${slug}` : '空欄の場合は自動生成されます'}
+          </p>
           {state.errors?.slug && (
             <p className="mt-1 text-sm text-red-600">{state.errors.slug[0]}</p>
           )}

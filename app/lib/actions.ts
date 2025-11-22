@@ -16,7 +16,7 @@ const PostSchema = z.object({
   id: z.string().uuid().optional(),
   blog_id: z.string().uuid({ message: 'ブログIDを選択してください。' }),
   title: z.string().min(1, { message: 'タイトルを入力してください。' }),
-  slug: z.string().min(1, { message: 'スラッグを入力してください。' }),
+  slug: z.string().optional(),
   content: z.string().min(1, { message: '本文を入力してください。' }),
   excerpt: z.string().optional(),
   featured_image: z.string().optional(),
@@ -147,7 +147,14 @@ export async function createPost(_prevState: State, formData: FormData): Promise
       };
     }
 
-    const { blog_id, title, slug, content, excerpt, featured_image, status, visibility, category_ids, tag_ids } = validatedFields.data;
+    let { blog_id, title, slug, content, excerpt, featured_image, status, visibility, category_ids, tag_ids } = validatedFields.data;
+
+    // スラッグが空の場合は自動生成（タイムスタンプ + ランダム文字列）
+    if (!slug || slug.trim() === '') {
+      const timestamp = Date.now().toString(36);
+      const random = Math.random().toString(36).substring(2, 8);
+      slug = `post-${timestamp}-${random}`;
+    }
 
     // スラッグの重複チェック
     const existingPost = await sql`
@@ -235,7 +242,14 @@ export async function updatePost(id: string, _prevState: State, formData: FormDa
       };
     }
 
-    const { blog_id, title, slug, content, excerpt, featured_image, status, visibility, category_ids, tag_ids } = validatedFields.data;
+    let { blog_id, title, slug, content, excerpt, featured_image, status, visibility, category_ids, tag_ids } = validatedFields.data;
+
+    // スラッグが空の場合は自動生成（タイムスタンプ + ランダム文字列）
+    if (!slug || slug.trim() === '') {
+      const timestamp = Date.now().toString(36);
+      const random = Math.random().toString(36).substring(2, 8);
+      slug = `post-${timestamp}-${random}`;
+    }
 
     // スラッグの重複チェック（自分以外）
     const existingPost = await sql`
@@ -693,16 +707,14 @@ export async function updateProfile(prevState: State, formData: FormData): Promi
     revalidatePath('/admin/profile');
     revalidatePath('/blog');
 
-    return {
-      message: 'プロフィールを更新しました。',
-    };
-
   } catch (error) {
     console.error('プロフィールの更新に失敗しました:', error);
     return {
       message: 'プロフィールの更新に失敗しました。',
     };
   }
+
+  redirect('/admin/profile');
 }
 
 // =====================
