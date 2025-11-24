@@ -36,8 +36,14 @@ function simpleMarkdownToHtml(markdown: string): string {
   html = html.replace(/^\* (.+)$/gim, '<li class="ml-4">$1</li>');
   html = html.replace(/(<li[\s\S]*?<\/li>)/g, '<ul class="list-disc my-4">$1</ul>');
 
-  // 段落（2つ以上の改行を段落に）
-  html = html.replace(/\n\n/g, '</p><p class="mb-4">');
+  // 段落と改行の処理
+  // まず、2つ以上の改行を段落の区切りに変換
+  html = html.replace(/\n\n+/g, '</p><p class="mb-4">');
+
+  // 単一の改行をbrタグに変換（ただし、既にHTMLタグの中にある改行は除外）
+  html = html.replace(/\n/g, '<br />');
+
+  // 段落で囲む
   html = '<p class="mb-4">' + html + '</p>';
 
   return html;
