@@ -6,6 +6,7 @@ import {
   fetchPublishedPosts,
   canAccessBlog,
   fetchCategories,
+  fetchTags,
 } from '@/app/lib/data';
 
 // すべての記事を表示するページ
@@ -39,11 +40,15 @@ export default async function AllPostsPage({
   // カテゴリを取得
   const categories = await fetchCategories();
 
+  // タグを取得
+  const tags = await fetchTags();
+
   return (
     <AllPostsClient
       blogPosts={blogPosts}
       currentBlog={currentBlog}
       categories={categories}
+      tags={tags}
     />
   );
 }
