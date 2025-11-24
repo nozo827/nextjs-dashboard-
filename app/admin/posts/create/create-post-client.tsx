@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useRef, useTransition } from 'react';
-import { useFormState } from 'react-dom';
+import { useState, useRef, useTransition, useActionState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createPost } from '@/app/lib/actions';
@@ -12,6 +11,7 @@ interface CreatePostClientProps {
   blogs: Blog[];
   categories: Category[];
   tags: Tag[];
+  initialBlogId?: string;
 }
 
 // 記事作成ページ（クライアントコンポーネント）
@@ -19,6 +19,7 @@ export default function CreatePostClient({
   blogs,
   categories,
   tags,
+  initialBlogId,
 }: CreatePostClientProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -28,13 +29,13 @@ export default function CreatePostClient({
   const [slug, setSlug] = useState('');
   const [excerpt, setExcerpt] = useState('');
   const [content, setContent] = useState('');
-  const [blogId, setBlogId] = useState(blogs[0]?.id || '');
+  const [blogId, setBlogId] = useState(initialBlogId || blogs[0]?.id || '');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   // フォーム状態管理
   const initialState = { message: null, errors: {} };
-  const [state, formAction] = useFormState(createPost, initialState);
+  const [state, formAction] = useActionState(createPost, initialState);
 
 
   // メディアを本文に挿入
@@ -124,7 +125,19 @@ export default function CreatePostClient({
               : 'bg-green-50 border border-green-200 text-green-600'
           }`}
         >
-          {state.message}
+          <div>{state.message}</div>
+          {state.errors && Object.keys(state.errors).length > 0 && (
+            <div className="mt-2 text-sm">
+              <strong>エラー詳細:</strong>
+              <ul className="list-disc list-inside mt-1">
+                {Object.entries(state.errors).map(([field, messages]) => (
+                  <li key={field}>
+                    <strong>{field}:</strong> {Array.isArray(messages) ? messages.join(', ') : messages}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 

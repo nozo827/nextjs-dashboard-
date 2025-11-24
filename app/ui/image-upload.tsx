@@ -54,14 +54,17 @@ export default function ImageUpload({
       });
 
       if (!response.ok) {
-        throw new Error('アップロードに失敗しました');
+        const errorData = await response.json();
+        console.error('[ImageUpload] Upload failed:', response.status, errorData);
+        throw new Error(errorData.error || errorData.details || `アップロードに失敗しました (${response.status})`);
       }
 
       const data = await response.json();
+      console.log('Upload success:', data);
       onImageSelect(data.url);
     } catch (error) {
       console.error('Upload error:', error);
-      alert('画像のアップロードに失敗しました');
+      alert(`画像のアップロードに失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`);
       setPreview(null);
     } finally {
       setUploading(false);

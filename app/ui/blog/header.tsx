@@ -120,7 +120,7 @@ export default function BlogHeader({
                   <div className="absolute right-0 top-full mt-2 w-48 rounded-lg border border-gray-200 bg-white shadow-lg z-50">
                     <div className="p-2">
                       <Link
-                        href="/admin"
+                        href={currentBlog ? `/admin?blog=${currentBlog.id}` : '/admin'}
                         onClick={() => setIsUserMenuOpen(false)}
                         className="block rounded-md px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                       >

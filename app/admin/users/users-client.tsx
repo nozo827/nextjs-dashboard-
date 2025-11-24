@@ -2,6 +2,8 @@
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { deleteUser } from '@/app/lib/actions';
 import type { User } from '@/app/lib/definitions';
 
 interface UserWithBlogs extends User {
@@ -14,9 +16,12 @@ interface UsersClientProps {
 
 // ユーザー管理ページ（クライアントコンポーネント）
 export default function UsersClient({ initialUsers }: UsersClientProps) {
+  const router = useRouter();
   const [users] = useState<UserWithBlogs[]>(initialUsers);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
+  const [deleteConfirm, setDeleteConfirm] = useState<{ userId: string; userName: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // フィルタリング
   const filteredUsers = useMemo(() => {
@@ -59,6 +64,25 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
         return '編集者';
       default:
         return 'ユーザー';
+    }
+  };
+
+  const handleDeleteClick = (userId: string, userName: string) => {
+    setDeleteConfirm({ userId, userName });
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirm) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteUser(deleteConfirm.userId);
+      setDeleteConfirm(null);
+      router.refresh();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'ユーザーの削除に失敗しました。');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -193,12 +217,20 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
                   {new Date(user.created_at).toLocaleDateString('ja-JP')}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <Link
-                    href={`/admin/users/${user.id}/access`}
-                    className="text-green-600 hover:text-green-900"
-                  >
-                    アクセス権限
-                  </Link>
+                  <div className="flex items-center justify-end gap-3">
+                    <Link
+                      href={`/admin/users/${user.id}/access`}
+                      className="text-green-600 hover:text-green-900"
+                    >
+                      アクセス権限
+                    </Link>
+                    <button
+                      onClick={() => handleDeleteClick(user.id, user.name)}
+                      className="text-red-600 hover:text-red-900"
+                    >
+                      削除
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -209,6 +241,36 @@ export default function UsersClient({ initialUsers }: UsersClientProps) {
       {filteredUsers.length === 0 && (
         <div className="text-center py-12 bg-white rounded-lg border border-gray-200 mt-6">
           <p className="text-gray-600">条件に一致するユーザーがいません。</p>
+        </div>
+      )}
+
+      {/* 削除確認ダイアログ */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">ユーザーの削除</h3>
+            <p className="text-gray-600 mb-6">
+              本当に <strong>{deleteConfirm.userName}</strong> を削除しますか？
+              <br />
+              この操作は取り消せません。
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
+              >
+                {isDeleting ? '削除中...' : '削除する'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -16,10 +16,10 @@ const PostSchema = z.object({
   id: z.string().uuid().optional(),
   blog_id: z.string().uuid({ message: 'ブログIDを選択してください。' }),
   title: z.string().min(1, { message: 'タイトルを入力してください。' }),
-  slug: z.string().optional(),
+  slug: z.string().nullable().optional(),
   content: z.string().min(1, { message: '本文を入力してください。' }),
-  excerpt: z.string().optional(),
-  featured_image: z.string().optional(),
+  excerpt: z.string().nullable().optional(),
+  featured_image: z.string().nullable().optional(),
   status: z.enum(['draft', 'published', 'archived'], {
     invalid_type_error: 'ステータスを選択してください。',
   }),
@@ -126,6 +126,10 @@ export async function createPost(_prevState: State, formData: FormData): Promise
   try {
     const user = await checkAdminRole();
 
+    // カテゴリとタグのIDを取得
+    const categoryIds = formData.getAll('category_ids').filter(id => typeof id === 'string') as string[];
+    const tagIds = formData.getAll('tag_ids').filter(id => typeof id === 'string') as string[];
+
     // バリデーション
     const validatedFields = PostSchema.safeParse({
       blog_id: formData.get('blog_id'),
@@ -136,11 +140,12 @@ export async function createPost(_prevState: State, formData: FormData): Promise
       featured_image: formData.get('featured_image'),
       status: formData.get('status'),
       visibility: formData.get('visibility'),
-      category_ids: formData.get('category_ids') ? JSON.parse(formData.get('category_ids') as string) : [],
-      tag_ids: formData.get('tag_ids') ? JSON.parse(formData.get('tag_ids') as string) : [],
+      category_ids: categoryIds.length > 0 ? categoryIds : undefined,
+      tag_ids: tagIds.length > 0 ? tagIds : undefined,
     });
 
     if (!validatedFields.success) {
+      console.error('createPost validation error:', JSON.stringify(validatedFields.error.flatten(), null, 2));
       return {
         errors: validatedFields.error.flatten().fieldErrors,
         message: '入力内容に誤りがあります。',
@@ -220,6 +225,10 @@ export async function updatePost(id: string, _prevState: State, formData: FormDa
   try {
     await checkAdminRole();
 
+    // カテゴリとタグのIDを取得
+    const categoryIds = formData.getAll('category_ids').filter(id => typeof id === 'string') as string[];
+    const tagIds = formData.getAll('tag_ids').filter(id => typeof id === 'string') as string[];
+
     // バリデーション
     const validatedFields = PostSchema.safeParse({
       id,
@@ -231,8 +240,8 @@ export async function updatePost(id: string, _prevState: State, formData: FormDa
       featured_image: formData.get('featured_image'),
       status: formData.get('status'),
       visibility: formData.get('visibility'),
-      category_ids: formData.get('category_ids') ? JSON.parse(formData.get('category_ids') as string) : [],
-      tag_ids: formData.get('tag_ids') ? JSON.parse(formData.get('tag_ids') as string) : [],
+      category_ids: categoryIds.length > 0 ? categoryIds : undefined,
+      tag_ids: tagIds.length > 0 ? tagIds : undefined,
     });
 
     if (!validatedFields.success) {
@@ -718,6 +727,30 @@ export async function updateProfile(prevState: State, formData: FormData): Promi
 
   // 更新後にリダイレクトして最新データを確実に取得
   redirect('/admin/profile');
+}
+
+// =====================
+// ユーザー管理関連のアクション
+// =====================
+
+export async function deleteUser(userId: string): Promise<void> {
+  try {
+    const currentUser = await checkAdminRole();
+
+    // 自分自身を削除できないようにする
+    if (currentUser.id === userId) {
+      throw new Error('自分自身を削除することはできません。');
+    }
+
+    // ユーザーを削除
+    await sql`DELETE FROM users WHERE id = ${userId}`;
+
+    revalidatePath('/admin/users');
+
+  } catch (error) {
+    console.error('ユーザーの削除に失敗しました:', error);
+    throw new Error(error instanceof Error ? error.message : 'ユーザーの削除に失敗しました。');
+  }
 }
 
 // =====================

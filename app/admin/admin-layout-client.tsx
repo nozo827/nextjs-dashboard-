@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import type { Blog } from '@/app/lib/definitions';
 
 interface AdminLayoutClientProps {
@@ -14,7 +14,6 @@ export default function AdminLayoutClient({
   children,
   blogs,
 }: AdminLayoutClientProps) {
-  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [selectedBlog, setSelectedBlog] = useState(blogs[0]?.id || '');
 
@@ -42,7 +41,7 @@ export default function AdminLayoutClient({
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between">
             <div className="flex items-center gap-8">
-              <Link href="/admin" className="text-xl font-bold text-gray-900">
+              <Link href={addBlogParam('/admin')} className="text-xl font-bold text-gray-900">
                 管理者画面
               </Link>
 

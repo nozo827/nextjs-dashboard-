@@ -16,9 +16,14 @@ export default function MediaUploader({ onInsert }: MediaUploaderProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('[MediaUploader] File select triggered');
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      console.log('[MediaUploader] No file selected');
+      return;
+    }
 
+    console.log('[MediaUploader] File selected:', file.name, file.size, file.type);
     setIsUploading(true);
     setError(null);
 
@@ -26,16 +31,28 @@ export default function MediaUploader({ onInsert }: MediaUploaderProps) {
       const formData = new FormData();
       formData.append('file', file);
 
+      console.log('[MediaUploader] Uploading file:', file.name, file.size, 'bytes');
+
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       });
 
-      const data = await response.json();
+      console.log('[MediaUploader] Response status:', response.status);
 
       if (!response.ok) {
-        throw new Error(data.error || 'アップロードに失敗しました');
+        let data;
+        try {
+          data = await response.json();
+        } catch (parseError) {
+          console.error('[MediaUploader] Failed to parse error response:', parseError);
+          throw new Error(`アップロードに失敗しました (${response.status} ${response.statusText})`);
+        }
+        console.error('[MediaUploader] Upload failed:', response.status, data);
+        throw new Error(data.error || data.details || `アップロードに失敗しました (${response.status})`);
       }
+
+      const data = await response.json();
 
       // アップロード成功
       setUploadedMedia([
@@ -47,6 +64,7 @@ export default function MediaUploader({ onInsert }: MediaUploaderProps) {
         },
       ]);
     } catch (err) {
+      console.error('[MediaUploader] Upload error:', err);
       setError(err instanceof Error ? err.message : 'アップロードに失敗しました');
     } finally {
       setIsUploading(false);
@@ -85,7 +103,10 @@ export default function MediaUploader({ onInsert }: MediaUploaderProps) {
 
         <button
           type="button"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => {
+            console.log('[MediaUploader] Button clicked, opening file picker');
+            fileInputRef.current?.click();
+          }}
           disabled={isUploading}
           className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
         >

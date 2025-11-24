@@ -101,7 +101,7 @@ export default function PostsClient({
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold text-gray-900">記事管理</h1>
         <Link
-          href="/admin/posts/create"
+          href={`/admin/posts/create?blog=${selectedBlog}`}
           className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-white font-medium hover:bg-blue-700"
         >
           <svg

@@ -1,14 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { put } from '@vercel/blob';
 import { writeFile } from 'fs/promises';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { auth } from '@/auth';
 
+// APIルートのボディサイズ制限を設定（50MB）
+export const runtime = 'nodejs';
+export const maxDuration = 30; // 最大30秒
+
+// 本番環境（Vercel）かどうかを判定
+const isProduction = process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview';
+
 export async function POST(request: NextRequest) {
   try {
+    console.log('[Upload] Starting upload process...');
+
     // 認証チェック
     const session = await auth();
+    console.log('[Upload] Session check:', session ? 'authenticated' : 'not authenticated');
+
     if (!session?.user) {
+      console.log('[Upload] Authentication failed');
       return NextResponse.json(
         { error: '認証が必要です' },
         { status: 401 }
@@ -17,6 +30,7 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get('file') as File;
+    console.log('[Upload] File received:', file ? `${file.name} (${file.size} bytes, ${file.type})` : 'no file');
 
     if (!file) {
       return NextResponse.json(
@@ -73,22 +87,49 @@ export async function POST(request: NextRequest) {
     }
 
     const filename = `${timestamp}-${randomString}.${extension}`;
+    let url: string;
 
-    // アップロードディレクトリのパス（画像と動画で分ける）
-    const subDir = file.type.startsWith('video/') ? 'videos' : 'images';
-    const uploadDir = join(process.cwd(), 'public', 'uploads', subDir);
+    // 本番環境（Vercel）の場合はVercel Blob Storageを使用
+    if (isProduction) {
+      console.log('[Upload] Using Vercel Blob Storage (production)');
 
-    // ディレクトリが存在しない場合は作成
-    if (!existsSync(uploadDir)) {
-      mkdirSync(uploadDir, { recursive: true });
+      if (!process.env.BLOB_READ_WRITE_TOKEN) {
+        console.error('[Upload] BLOB_READ_WRITE_TOKEN is not set');
+        return NextResponse.json(
+          { error: 'ストレージの設定が完了していません。管理者に連絡してください。' },
+          { status: 500 }
+        );
+      }
+
+      // Vercel Blob Storageにアップロード
+      const blob = await put(filename, buffer, {
+        access: 'public',
+        contentType: file.type,
+      });
+
+      url = blob.url;
+      console.log('[Upload] Upload successful to Vercel Blob:', url);
+    } else {
+      // ローカル環境の場合はファイルシステムに保存
+      console.log('[Upload] Using local filesystem (development)');
+
+      const subDir = file.type.startsWith('video/') ? 'videos' : 'images';
+      const uploadDir = join(process.cwd(), 'public', 'uploads', subDir);
+
+      // ディレクトリが存在しない場合は作成
+      if (!existsSync(uploadDir)) {
+        mkdirSync(uploadDir, { recursive: true });
+      }
+
+      // ファイルを保存
+      const filepath = join(uploadDir, filename);
+      console.log('[Upload] Saving file to:', filepath);
+      await writeFile(filepath, buffer);
+
+      // 公開URL
+      url = `/uploads/${subDir}/${filename}`;
+      console.log('[Upload] Upload successful to local filesystem:', url);
     }
-
-    // ファイルを保存
-    const filepath = join(uploadDir, filename);
-    await writeFile(filepath, buffer);
-
-    // 公開URL
-    const url = `/uploads/${subDir}/${filename}`;
 
     return NextResponse.json({
       url,
@@ -97,9 +138,9 @@ export async function POST(request: NextRequest) {
       filename,
     }, { status: 200 });
   } catch (error) {
-    console.error('Upload error:', error);
+    console.error('[Upload] Upload error:', error);
     return NextResponse.json(
-      { error: 'アップロードに失敗しました' },
+      { error: 'アップロードに失敗しました', details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }

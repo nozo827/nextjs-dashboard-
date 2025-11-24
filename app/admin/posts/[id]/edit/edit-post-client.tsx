@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useRef, useTransition } from 'react';
-import { useFormState } from 'react-dom';
+import { useState, useRef, useTransition, useActionState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { updatePost } from '@/app/lib/actions';
@@ -40,7 +39,7 @@ export default function EditPostClient({
   // フォーム状態管理
   const initialState = { message: null, errors: {} };
   const updatePostWithId = updatePost.bind(null, post.id);
-  const [state, formAction] = useFormState(updatePostWithId, initialState);
+  const [state, formAction] = useActionState(updatePostWithId, initialState);
 
   // メディアを本文に挿入
   const handleMediaInsert = (url: string, type: string) => {

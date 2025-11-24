@@ -89,7 +89,7 @@ export default async function BlogPage({
       )}
 
       {/* プロフィール欄（テックブログのみ） */}
-      {blogSlug === 'tech' && adminUser && (adminUser.avatar_url || adminUser.bio) && (
+      {blogSlug === 'tech' && adminUser && (
         <ProfileSection user={adminUser} />
       )}
     </div>
