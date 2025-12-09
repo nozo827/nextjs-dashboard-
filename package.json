@@ -4,7 +4,9 @@
     "build": "next build",
     "dev": "next dev",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "switch:tensei": "node scripts/switch-env.js tensei",
+    "switch:nonnchi": "node scripts/switch-env.js nonnchi"
   },
   "dependencies": {
     "@auth/core": "^0.34.3",
