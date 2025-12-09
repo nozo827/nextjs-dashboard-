@@ -59,6 +59,7 @@ export type Category = {
   name: string;
   slug: string;
   description: string | null;
+  blog_id: string | null;
   created_at: Date;
 };
 
@@ -66,6 +67,7 @@ export type Tag = {
   id: string;
   name: string;
   slug: string;
+  blog_id: string | null;
   created_at: Date;
 };
 
@@ -92,8 +94,8 @@ export type Post = {
 export type PostWithAuthor = Post & {
   author_name: string;
   author_email: string;
-  categories: Category[];
-  tags: Tag[];
+  categories?: Category[];
+  tags?: Tag[];
 };
 
 // 記事詳細表示用（カテゴリ、タグ、著者を含む）
@@ -130,10 +132,14 @@ export type PostsFilter = {
   author_id?: string;
 };
 
+// リアクションタイプ
+export type ReactionType = 'like' | 'love' | 'clap' | 'rocket' | 'fire';
+
 // コメント
 export type Comment = {
   id: string;
   post_id: string;
+  parent_id: string | null; // 返信先のコメントID
   author_name: string;
   author_email: string;
   content: string;
@@ -141,10 +147,43 @@ export type Comment = {
   approved: boolean;
 };
 
+// コメント（返信とリアクション情報付き）
+export type CommentWithReplies = Comment & {
+  replies: Comment[];
+  reactions: { [key in ReactionType]: number };
+  user_reaction?: ReactionType | null; // ユーザーがつけたリアクション
+};
+
 // コメントフォーム用
 export type CommentForm = {
   post_id: string;
+  parent_id?: string | null; // 返信先のコメントID
   author_name: string;
   author_email: string;
   content: string;
+};
+
+// 記事へのリアクション
+export type PostReaction = {
+  id: string;
+  post_id: string;
+  user_id: string | null;
+  session_id: string | null;
+  reaction_type: ReactionType;
+  created_at: Date;
+};
+
+// コメントへのリアクション
+export type CommentReaction = {
+  id: string;
+  comment_id: string;
+  user_id: string | null;
+  session_id: string | null;
+  reaction_type: ReactionType;
+  created_at: Date;
+};
+
+// リアクション集計
+export type ReactionSummary = {
+  [key in ReactionType]: number;
 };

@@ -8,6 +8,15 @@ import { AuthError } from 'next-auth';
 import { signIn, auth } from '@/auth';
 import bcrypt from 'bcryptjs';
 
+// 現在のブログIDを取得
+function getCurrentBlogId(): string {
+  const blogId = process.env.BLOG_ID;
+  if (!blogId) {
+    throw new Error('BLOG_ID environment variable is not set');
+  }
+  return blogId;
+}
+
 // =====================
 // バリデーションスキーマ
 // =====================
@@ -46,6 +55,7 @@ const TagSchema = z.object({
 const CommentSchema = z.object({
   id: z.string().uuid().optional(),
   post_id: z.string().uuid(),
+  parent_id: z.string().uuid().nullable().optional(),
   author_name: z.string().min(1, { message: '名前を入力してください。' }),
   author_email: z.string().email({ message: '有効なメールアドレスを入力してください。' }),
   content: z.string().min(1, { message: 'コメントを入力してください。' }),
@@ -388,10 +398,11 @@ export async function createCategory(_prevState: State, formData: FormData): Pro
     }
 
     const { name, slug, description } = validatedFields.data;
+    const blogId = getCurrentBlogId();
 
-    // スラッグの重複チェック
+    // スラッグの重複チェック（同じブログ内で）
     const existing = await sql`
-      SELECT id FROM categories WHERE slug = ${slug}
+      SELECT id FROM categories WHERE slug = ${slug} AND blog_id = ${blogId}
     `;
 
     if (existing.rows.length > 0) {
@@ -402,8 +413,8 @@ export async function createCategory(_prevState: State, formData: FormData): Pro
     }
 
     await sql`
-      INSERT INTO categories (name, slug, description, created_at)
-      VALUES (${name}, ${slug}, ${description || null}, NOW())
+      INSERT INTO categories (name, slug, description, blog_id, created_at)
+      VALUES (${name}, ${slug}, ${description || null}, ${blogId}, NOW())
     `;
 
     revalidatePath('/admin/categories');
@@ -439,10 +450,11 @@ export async function updateCategory(id: string, _prevState: State, formData: Fo
     }
 
     const { name, slug, description } = validatedFields.data;
+    const blogId = getCurrentBlogId();
 
-    // スラッグの重複チェック（自分以外）
+    // スラッグの重複チェック（同じブログ内で自分以外）
     const existing = await sql`
-      SELECT id FROM categories WHERE slug = ${slug} AND id != ${id}
+      SELECT id FROM categories WHERE slug = ${slug} AND blog_id = ${blogId} AND id != ${id}
     `;
 
     if (existing.rows.length > 0) {
@@ -509,10 +521,11 @@ export async function createTag(_prevState: State, formData: FormData): Promise<
     }
 
     const { name, slug } = validatedFields.data;
+    const blogId = getCurrentBlogId();
 
-    // スラッグの重複チェック
+    // スラッグの重複チェック（同じブログ内で）
     const existing = await sql`
-      SELECT id FROM tags WHERE slug = ${slug}
+      SELECT id FROM tags WHERE slug = ${slug} AND blog_id = ${blogId}
     `;
 
     if (existing.rows.length > 0) {
@@ -523,8 +536,8 @@ export async function createTag(_prevState: State, formData: FormData): Promise<
     }
 
     await sql`
-      INSERT INTO tags (name, slug, created_at)
-      VALUES (${name}, ${slug}, NOW())
+      INSERT INTO tags (name, slug, blog_id, created_at)
+      VALUES (${name}, ${slug}, ${blogId}, NOW())
     `;
 
     revalidatePath('/admin/tags');
@@ -559,10 +572,11 @@ export async function updateTag(id: string, _prevState: State, formData: FormDat
     }
 
     const { name, slug } = validatedFields.data;
+    const blogId = getCurrentBlogId();
 
-    // スラッグの重複チェック（自分以外）
+    // スラッグの重複チェック（同じブログ内で自分以外）
     const existing = await sql`
-      SELECT id FROM tags WHERE slug = ${slug} AND id != ${id}
+      SELECT id FROM tags WHERE slug = ${slug} AND blog_id = ${blogId} AND id != ${id}
     `;
 
     if (existing.rows.length > 0) {
@@ -615,6 +629,7 @@ export async function createComment(prevState: State, formData: FormData): Promi
   try {
     const validatedFields = CommentSchema.safeParse({
       post_id: formData.get('post_id'),
+      parent_id: formData.get('parent_id') || null,
       author_name: formData.get('author_name'),
       author_email: formData.get('author_email'),
       content: formData.get('content'),
@@ -627,17 +642,22 @@ export async function createComment(prevState: State, formData: FormData): Promi
       };
     }
 
-    const { post_id, author_name, author_email, content } = validatedFields.data;
+    const { post_id, parent_id, author_name, author_email, content } = validatedFields.data;
 
     await sql`
-      INSERT INTO comments (post_id, author_name, author_email, content, created_at, approved)
-      VALUES (${post_id}, ${author_name}, ${author_email}, ${content}, NOW(), false)
+      INSERT INTO comments (post_id, parent_id, author_name, author_email, content, created_at, approved)
+      VALUES (${post_id}, ${parent_id || null}, ${author_name}, ${author_email}, ${content}, NOW(), false)
     `;
 
+    // 記事のスラッグを取得してキャッシュを再検証
+    const postResult = await sql`SELECT slug FROM posts WHERE id = ${post_id}`;
+    if (postResult.rows.length > 0) {
+      revalidatePath(`/blog/${postResult.rows[0].slug}`);
+    }
     revalidatePath(`/blog`);
 
     return {
-      message: 'コメントを投稿しました。承認後に表示されます。',
+      message: parent_id ? '返信を投稿しました。承認後に表示されます。' : 'コメントを投稿しました。承認後に表示されます。',
     };
 
   } catch (error) {
@@ -652,6 +672,14 @@ export async function approveComment(id: string): Promise<void> {
   try {
     await checkAdminRole();
 
+    // コメントが属する記事のスラッグを取得
+    const commentResult = await sql`
+      SELECT c.id, p.slug
+      FROM comments c
+      JOIN posts p ON c.post_id = p.id
+      WHERE c.id = ${id}
+    `;
+
     await sql`
       UPDATE comments
       SET approved = true
@@ -660,6 +688,12 @@ export async function approveComment(id: string): Promise<void> {
 
     revalidatePath('/admin/comments');
     revalidatePath('/blog');
+
+    // 個別記事ページのキャッシュも再検証
+    if (commentResult.rows.length > 0) {
+      const slug = commentResult.rows[0].slug;
+      revalidatePath(`/blog/${slug}`);
+    }
 
   } catch (error) {
     console.error('コメントの承認に失敗しました:', error);
@@ -671,10 +705,24 @@ export async function deleteComment(id: string): Promise<void> {
   try {
     await checkAdminRole();
 
+    // コメントが属する記事のスラッグを取得（削除前に）
+    const commentResult = await sql`
+      SELECT c.id, p.slug
+      FROM comments c
+      JOIN posts p ON c.post_id = p.id
+      WHERE c.id = ${id}
+    `;
+
     await sql`DELETE FROM comments WHERE id = ${id}`;
 
     revalidatePath('/admin/comments');
     revalidatePath('/blog');
+
+    // 個別記事ページのキャッシュも再検証
+    if (commentResult.rows.length > 0) {
+      const slug = commentResult.rows[0].slug;
+      revalidatePath(`/blog/${slug}`);
+    }
 
   } catch (error) {
     console.error('コメントの削除に失敗しました:', error);
@@ -889,6 +937,138 @@ const RegisterSchema = z.object({
   password: z.string().min(6, { message: 'パスワードは6文字以上で入力してください。' }),
   confirmPassword: z.string().min(6, { message: 'パスワードは6文字以上で入力してください。' }),
 });
+
+// =====================
+// リアクション関連のアクション
+// =====================
+
+// 記事にリアクションを追加/削除
+export async function togglePostReaction(
+  postId: string,
+  reactionType: 'like' | 'love' | 'clap' | 'rocket' | 'fire',
+  sessionId: string
+): Promise<{ success: boolean; action: 'added' | 'removed' }> {
+  try {
+    const session = await auth();
+    const userId = session?.user?.id || null;
+
+    // ユーザーIDまたはセッションIDのいずれかが必要
+    if (!userId && !sessionId) {
+      throw new Error('ユーザー情報が必要です。');
+    }
+
+    // 既存のリアクションをチェック
+    const existingReaction = userId
+      ? await sql`
+          SELECT id FROM post_reactions
+          WHERE post_id = ${postId} AND user_id = ${userId} AND reaction_type = ${reactionType}
+        `
+      : await sql`
+          SELECT id FROM post_reactions
+          WHERE post_id = ${postId} AND session_id = ${sessionId} AND reaction_type = ${reactionType}
+        `;
+
+    if (existingReaction.rows.length > 0) {
+      // 既にリアクションがある場合は削除
+      await sql`DELETE FROM post_reactions WHERE id = ${existingReaction.rows[0].id}`;
+
+      // キャッシュを再検証
+      const postResult = await sql`SELECT slug FROM posts WHERE id = ${postId}`;
+      if (postResult.rows.length > 0) {
+        revalidatePath(`/blog/${postResult.rows[0].slug}`);
+      }
+
+      return { success: true, action: 'removed' };
+    } else {
+      // リアクションを追加
+      await sql`
+        INSERT INTO post_reactions (post_id, user_id, session_id, reaction_type, created_at)
+        VALUES (${postId}, ${userId}, ${sessionId}, ${reactionType}, NOW())
+      `;
+
+      // キャッシュを再検証
+      const postResult = await sql`SELECT slug FROM posts WHERE id = ${postId}`;
+      if (postResult.rows.length > 0) {
+        revalidatePath(`/blog/${postResult.rows[0].slug}`);
+      }
+
+      return { success: true, action: 'added' };
+    }
+  } catch (error) {
+    console.error('リアクションの追加/削除に失敗しました:', error);
+    throw new Error('リアクションの追加/削除に失敗しました。');
+  }
+}
+
+// コメントにリアクションを追加/削除
+export async function toggleCommentReaction(
+  commentId: string,
+  reactionType: 'like' | 'love' | 'clap' | 'rocket' | 'fire',
+  sessionId: string
+): Promise<{ success: boolean; action: 'added' | 'removed' }> {
+  try {
+    const session = await auth();
+    const userId = session?.user?.id || null;
+
+    // ユーザーIDまたはセッションIDのいずれかが必要
+    if (!userId && !sessionId) {
+      throw new Error('ユーザー情報が必要です。');
+    }
+
+    // 既存のリアクションをチェック
+    const existingReaction = userId
+      ? await sql`
+          SELECT id FROM comment_reactions
+          WHERE comment_id = ${commentId} AND user_id = ${userId} AND reaction_type = ${reactionType}
+        `
+      : await sql`
+          SELECT id FROM comment_reactions
+          WHERE comment_id = ${commentId} AND session_id = ${sessionId} AND reaction_type = ${reactionType}
+        `;
+
+    if (existingReaction.rows.length > 0) {
+      // 既にリアクションがある場合は削除
+      await sql`DELETE FROM comment_reactions WHERE id = ${existingReaction.rows[0].id}`;
+
+      // キャッシュを再検証
+      const commentResult = await sql`
+        SELECT p.slug FROM comments c
+        JOIN posts p ON c.post_id = p.id
+        WHERE c.id = ${commentId}
+      `;
+      if (commentResult.rows.length > 0) {
+        revalidatePath(`/blog/${commentResult.rows[0].slug}`);
+      }
+
+      return { success: true, action: 'removed' };
+    } else {
+      // リアクションを追加
+      await sql`
+        INSERT INTO comment_reactions (comment_id, user_id, session_id, reaction_type, created_at)
+        VALUES (${commentId}, ${userId}, ${sessionId}, ${reactionType}, NOW())
+      `;
+
+      // キャッシュを再検証
+      const commentResult = await sql`
+        SELECT p.slug FROM comments c
+        JOIN posts p ON c.post_id = p.id
+        WHERE c.id = ${commentId}
+      `;
+      if (commentResult.rows.length > 0) {
+        revalidatePath(`/blog/${commentResult.rows[0].slug}`);
+      }
+
+      return { success: true, action: 'added' };
+    }
+  } catch (error) {
+    console.error('リアクションの追加/削除に失敗しました:', error);
+    throw new Error('リアクションの追加/削除に失敗しました。');
+  }
+}
+
+// =====================
+// ユーザー登録
+// =====================
 
 export async function registerUser(_prevState: State, formData: FormData): Promise<State> {
   try {

@@ -12,6 +12,15 @@ import {
 
 const ITEMS_PER_PAGE = 10;
 
+// 現在のブログIDを取得
+function getCurrentBlogId(): string {
+  const blogId = process.env.BLOG_ID;
+  if (!blogId) {
+    throw new Error('BLOG_ID environment variable is not set');
+  }
+  return blogId;
+}
+
 // =====================
 // ブログ関連
 // =====================
@@ -155,6 +164,7 @@ export async function fetchPublishedPosts(
         c.name,
         c.slug,
         c.description,
+        c.blog_id,
         c.created_at
       FROM post_categories pc
       JOIN categories c ON pc.category_id = c.id
@@ -174,6 +184,7 @@ export async function fetchPublishedPosts(
           name: row.name,
           slug: row.slug,
           description: row.description,
+          blog_id: row.blog_id,
           created_at: row.created_at,
         });
         return acc;
@@ -181,13 +192,48 @@ export async function fetchPublishedPosts(
       {} as Record<string, Category[]>
     );
 
-    // 各記事にカテゴリを追加
-    const postsWithCategories = posts.map((post) => ({
+    // 1回のクエリで全記事のタグを取得（N+1問題を回避）
+    const tagsResult = await sql.query(
+      `SELECT
+        pt.post_id,
+        t.id,
+        t.name,
+        t.slug,
+        t.blog_id,
+        t.created_at
+      FROM post_tags pt
+      JOIN tags t ON pt.tag_id = t.id
+      WHERE pt.post_id = ANY($1)
+      ORDER BY t.name ASC`,
+      [postIds]
+    );
+
+    // 記事IDごとにタグをグループ化
+    const tagsByPostId = tagsResult.rows.reduce(
+      (acc, row) => {
+        if (!acc[row.post_id]) {
+          acc[row.post_id] = [];
+        }
+        acc[row.post_id].push({
+          id: row.id,
+          name: row.name,
+          slug: row.slug,
+          blog_id: row.blog_id,
+          created_at: row.created_at,
+        });
+        return acc;
+      },
+      {} as Record<string, Tag[]>
+    );
+
+    // 各記事にカテゴリとタグを追加
+    const postsWithCategoriesAndTags = posts.map((post) => ({
       ...post,
       categories: categoriesByPostId[post.id] || [],
+      tags: tagsByPostId[post.id] || [],
     }));
 
-    return postsWithCategories;
+    return postsWithCategoriesAndTags;
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch published posts.');
@@ -362,6 +408,7 @@ export async function fetchPostsByBlogId(
         c.name,
         c.slug,
         c.description,
+        c.blog_id,
         c.created_at
       FROM post_categories pc
       JOIN categories c ON pc.category_id = c.id
@@ -381,6 +428,7 @@ export async function fetchPostsByBlogId(
           name: row.name,
           slug: row.slug,
           description: row.description,
+          blog_id: row.blog_id,
           created_at: row.created_at,
         });
         return acc;
@@ -388,13 +436,48 @@ export async function fetchPostsByBlogId(
       {}
     );
 
-    // 各記事にカテゴリを追加
-    const postsWithCategories = posts.map((post) => ({
+    // 1回のクエリで全記事のタグを取得（N+1問題を回避）
+    const tagsResult = await sql.query(
+      `SELECT
+        pt.post_id,
+        t.id,
+        t.name,
+        t.slug,
+        t.blog_id,
+        t.created_at
+      FROM post_tags pt
+      JOIN tags t ON pt.tag_id = t.id
+      WHERE pt.post_id = ANY($1)
+      ORDER BY t.name ASC`,
+      [postIds]
+    );
+
+    // 記事IDごとにタグをグループ化
+    const tagsByPostId = tagsResult.rows.reduce(
+      (acc: Record<string, Tag[]>, row: any) => {
+        if (!acc[row.post_id]) {
+          acc[row.post_id] = [];
+        }
+        acc[row.post_id].push({
+          id: row.id,
+          name: row.name,
+          slug: row.slug,
+          blog_id: row.blog_id,
+          created_at: row.created_at,
+        });
+        return acc;
+      },
+      {}
+    );
+
+    // 各記事にカテゴリとタグを追加
+    const postsWithCategoriesAndTags = posts.map((post) => ({
       ...post,
       categories: categoriesByPostId[post.id] || [],
+      tags: tagsByPostId[post.id] || [],
     }));
 
-    return postsWithCategories;
+    return postsWithCategoriesAndTags;
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch posts by blog ID.');
@@ -440,8 +523,10 @@ export async function incrementPostViewCount(postId: string): Promise<void> {
 // 全てのカテゴリを取得
 export async function fetchCategories(): Promise<Category[]> {
   try {
+    const blogId = getCurrentBlogId();
     const result = await sql`
       SELECT * FROM categories
+      WHERE blog_id = ${blogId}
       ORDER BY name ASC
     `;
     return result.rows as Category[];
@@ -488,7 +573,93 @@ export async function fetchPostsByCategory(
       ORDER BY posts.published_at DESC
       LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
     `;
-    return result.rows as PostWithAuthor[];
+    const posts = result.rows as PostWithAuthor[];
+
+    if (posts.length === 0) {
+      return [];
+    }
+
+    // すべての記事IDを取得
+    const postIds = posts.map((post) => post.id);
+
+    // 1回のクエリで全記事のカテゴリを取得（N+1問題を回避）
+    const categoriesResult = await sql.query(
+      `SELECT
+        pc.post_id,
+        c.id,
+        c.name,
+        c.slug,
+        c.description,
+        c.blog_id,
+        c.created_at
+      FROM post_categories pc
+      JOIN categories c ON pc.category_id = c.id
+      WHERE pc.post_id = ANY($1)
+      ORDER BY c.name ASC`,
+      [postIds]
+    );
+
+    // 記事IDごとにカテゴリをグループ化
+    const categoriesByPostId = categoriesResult.rows.reduce(
+      (acc, row) => {
+        if (!acc[row.post_id]) {
+          acc[row.post_id] = [];
+        }
+        acc[row.post_id].push({
+          id: row.id,
+          name: row.name,
+          slug: row.slug,
+          description: row.description,
+          blog_id: row.blog_id,
+          created_at: row.created_at,
+        });
+        return acc;
+      },
+      {} as Record<string, Category[]>
+    );
+
+    // 1回のクエリで全記事のタグを取得（N+1問題を回避）
+    const tagsResult = await sql.query(
+      `SELECT
+        pt.post_id,
+        t.id,
+        t.name,
+        t.slug,
+        t.blog_id,
+        t.created_at
+      FROM post_tags pt
+      JOIN tags t ON pt.tag_id = t.id
+      WHERE pt.post_id = ANY($1)
+      ORDER BY t.name ASC`,
+      [postIds]
+    );
+
+    // 記事IDごとにタグをグループ化
+    const tagsByPostId = tagsResult.rows.reduce(
+      (acc, row) => {
+        if (!acc[row.post_id]) {
+          acc[row.post_id] = [];
+        }
+        acc[row.post_id].push({
+          id: row.id,
+          name: row.name,
+          slug: row.slug,
+          blog_id: row.blog_id,
+          created_at: row.created_at,
+        });
+        return acc;
+      },
+      {} as Record<string, Tag[]>
+    );
+
+    // 各記事にカテゴリとタグを追加
+    const postsWithCategoriesAndTags = posts.map((post) => ({
+      ...post,
+      categories: categoriesByPostId[post.id] || [],
+      tags: tagsByPostId[post.id] || [],
+    }));
+
+    return postsWithCategoriesAndTags;
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch posts by category.');
@@ -502,8 +673,10 @@ export async function fetchPostsByCategory(
 // 全てのタグを取得
 export async function fetchTags(): Promise<Tag[]> {
   try {
+    const blogId = getCurrentBlogId();
     const result = await sql`
       SELECT * FROM tags
+      WHERE blog_id = ${blogId}
       ORDER BY name ASC
     `;
     return result.rows as Tag[];
@@ -550,7 +723,93 @@ export async function fetchPostsByTag(
       ORDER BY posts.published_at DESC
       LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}
     `;
-    return result.rows as PostWithAuthor[];
+    const posts = result.rows as PostWithAuthor[];
+
+    if (posts.length === 0) {
+      return [];
+    }
+
+    // すべての記事IDを取得
+    const postIds = posts.map((post) => post.id);
+
+    // 1回のクエリで全記事のカテゴリを取得（N+1問題を回避）
+    const categoriesResult = await sql.query(
+      `SELECT
+        pc.post_id,
+        c.id,
+        c.name,
+        c.slug,
+        c.description,
+        c.blog_id,
+        c.created_at
+      FROM post_categories pc
+      JOIN categories c ON pc.category_id = c.id
+      WHERE pc.post_id = ANY($1)
+      ORDER BY c.name ASC`,
+      [postIds]
+    );
+
+    // 記事IDごとにカテゴリをグループ化
+    const categoriesByPostId = categoriesResult.rows.reduce(
+      (acc, row) => {
+        if (!acc[row.post_id]) {
+          acc[row.post_id] = [];
+        }
+        acc[row.post_id].push({
+          id: row.id,
+          name: row.name,
+          slug: row.slug,
+          description: row.description,
+          blog_id: row.blog_id,
+          created_at: row.created_at,
+        });
+        return acc;
+      },
+      {} as Record<string, Category[]>
+    );
+
+    // 1回のクエリで全記事のタグを取得（N+1問題を回避）
+    const tagsResult = await sql.query(
+      `SELECT
+        pt.post_id,
+        t.id,
+        t.name,
+        t.slug,
+        t.blog_id,
+        t.created_at
+      FROM post_tags pt
+      JOIN tags t ON pt.tag_id = t.id
+      WHERE pt.post_id = ANY($1)
+      ORDER BY t.name ASC`,
+      [postIds]
+    );
+
+    // 記事IDごとにタグをグループ化
+    const tagsByPostId = tagsResult.rows.reduce(
+      (acc, row) => {
+        if (!acc[row.post_id]) {
+          acc[row.post_id] = [];
+        }
+        acc[row.post_id].push({
+          id: row.id,
+          name: row.name,
+          slug: row.slug,
+          blog_id: row.blog_id,
+          created_at: row.created_at,
+        });
+        return acc;
+      },
+      {} as Record<string, Tag[]>
+    );
+
+    // 各記事にカテゴリとタグを追加
+    const postsWithCategoriesAndTags = posts.map((post) => ({
+      ...post,
+      categories: categoriesByPostId[post.id] || [],
+      tags: tagsByPostId[post.id] || [],
+    }));
+
+    return postsWithCategoriesAndTags;
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch posts by tag.');
