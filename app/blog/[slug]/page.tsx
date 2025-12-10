@@ -144,8 +144,8 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
     }
   }
 
-  // 閲覧数をインクリメント（非同期で実行、ページレンダリングをブロックしない）
-  incrementPostViewCount(post.id).catch(console.error);
+  // 閲覧数をインクリメント（管理者の閲覧は除外、非同期で実行、ページレンダリングをブロックしない）
+  incrementPostViewCount(post.id, session?.user?.role).catch(console.error);
 
   // コメントを取得（親コメントのみ）
   const commentsResult = await sql`

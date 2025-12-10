@@ -502,9 +502,14 @@ export async function fetchBlogPostStats(blogId: string) {
   }
 }
 
-// 記事の閲覧数を増やす
-export async function incrementPostViewCount(postId: string): Promise<void> {
+// 記事の閲覧数を増やす（管理者の閲覧は除外）
+export async function incrementPostViewCount(postId: string, userRole?: string): Promise<void> {
   try {
+    // 管理者の閲覧はカウントしない
+    if (userRole === 'admin') {
+      return;
+    }
+
     await sql`
       UPDATE posts
       SET view_count = view_count + 1
